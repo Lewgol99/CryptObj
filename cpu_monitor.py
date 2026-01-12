@@ -38,7 +38,7 @@ class CPUMonitor:
             self.thread.join()
         
         # FORCE SAVE when stopped (like latency monitor)
-        self.save_file('cpu_measurements')
+        self.save_file('pysyncobj+_cpu_measurements')
         print(f"🛑 CPU monitoring stopped - Final CSV saved with {len(self.results_list)} measurements")
         return True
 
