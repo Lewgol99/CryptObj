@@ -6,8 +6,6 @@ from pysyncobj import SyncObj, replicated, SyncObjConf
 import datetime
 from cpu_monitor import CPUMonitor
 from memory_monitor import MemoryMonitor
-from asymmetric_keys import Asymmetric_Keys
-from csr import CertificateSigningRequest
 
 class Raft(SyncObj):
     def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data):
@@ -34,7 +32,7 @@ class Raft(SyncObj):
         print(self.nodes_data)  
         return self.nodes_data
 
-    def run_policies(self):
+    def run_scripts(self):
         # Create fresh instances each time - no serialization issues
         memory_monitor = MemoryMonitor()
         cpu_monitor = CPUMonitor()
@@ -42,10 +40,6 @@ class Raft(SyncObj):
         # Start monitoring
         memory_monitor.start_monitoring()
         cpu_monitor.start_monitoring()
-
-        # start PKI
-        asymkeygen = Asymmetric_Keys()
-        csr = CertificateSigningRequest(private_key)
 
 def onAdd(res, err, cnt):
     print('onAdd %d:' % cnt, res, err)
