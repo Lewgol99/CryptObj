@@ -1,11 +1,27 @@
 import sys
 import time
 import json
+from colorama import Fore
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
 import datetime
 from cpu_monitor import CPUMonitor
 from memory_monitor import MemoryMonitor
+from pki_setup import PKI
+import os
+
+if not os.path.exists('pki_private_key.pem'):
+    print('')
+    pki = PKI()
+    pki.generate_keys()
+    pki.generate_csr()
+    exit()
+
+if not os.path.exists('certificate.pem'):
+    print(Fore.RED + f'Error: No Certificate Found Cannot Start PySyncObj!!')
+    exit(0)
+
+print(Fore.GREEN + f'Certificate Found STarting PySyncObj!')
 
 class Raft(SyncObj):
     def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data):
