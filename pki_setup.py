@@ -4,7 +4,7 @@ from csr import CertificateSigningRequest
 class PKI:
     def __init__(self):
         self.keygen = None
-        self.self.private_key = None 
+        self.private_key = None 
 
     def generate_keys(self):
         self.keygen = Asymmetric_Keys()
