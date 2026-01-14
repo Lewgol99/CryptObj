@@ -1,5 +1,6 @@
 from asymmetric_keys import Asymmetric_Keys
 from csr import CertificateSigningRequest
+from colorama import Fore
 
 class PKI:
     def __init__(self):
