@@ -3,5 +3,11 @@ from flask import Flask
 app = Flask(__name__)
 
 @app.route("/")
-def hello():
-    return "CA Server Connected!"
+def server_status():
+    return {
+        "service": 'CA Server',
+        "status": 'Connected'
+    }
+    
+if __name__ == '__main__':
+    app.run()
