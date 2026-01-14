@@ -15,11 +15,6 @@ class PKI:
         if self.private_key is None:
             print(Fore.RED + f'Error: Generate Keys First!')
             return None
-        csr = CertificateSigningRequest(private_key)
+        csr = CertificateSigningRequest(self.private_key)
         csr.Create_CSR()
         csr.Save_CSR()
-
-pki = PKI()
-pki.generate_keys()
-pki.generate_csr()
-print(Fore.GREEN + 'Success: Send CSR to CA!')
