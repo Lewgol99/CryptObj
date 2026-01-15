@@ -9,8 +9,11 @@ from cpu_monitor import CPUMonitor
 from memory_monitor import MemoryMonitor
 from pki_setup import PKI
 import os
+from request import get_ca_status
 
-if not os.path.exists('pki_private_key.pem'):
+status = get_ca_status() # connect to the flask server
+
+if not os.path.exists('pki_private_key.pem'): # connect to CA
     print('')
     pki = PKI()
     pki.generate_keys()
