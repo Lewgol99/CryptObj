@@ -1,4 +1,4 @@
 import requests
 
-response = requests.get("http://10.100.0.186:5000/")
+response = requests.get("http://192.168.66.252:5000/")
 print(response.json())
