@@ -9,15 +9,23 @@ from cpu_monitor import CPUMonitor
 from memory_monitor import MemoryMonitor
 from pki_setup import PKI
 import os
-from request import get_ca_status
+from request import get_ca_status, submit_csr_to_ca
 
 status = get_ca_status() # connect to the flask server
+print(Fore.CYAN + f'CA Status: {status}')
 
 if not os.path.exists('pki_private_key.pem'): # connect to CA
-    print('')
+    print(Fore.YELLOW + 'No private key found, generating...')
     pki = PKI()
     pki.generate_keys()
     pki.generate_csr()
+    print(Fore.YELLOW + 'About to submit CSR to CA...')
+    result = submit_csr_to_ca()
+    print(Fore.YELLOW + f'CSR submission result: {result}')
+    if os.path.exists('certificate.pem'):
+        print(Fore.GREEN + 'Certificate file created successfully!')
+    else:
+        print(Fore.RED + 'Certificate file was NOT created!')
     exit()
 
 if not os.path.exists('certificate.pem'):
