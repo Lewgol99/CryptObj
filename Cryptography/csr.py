@@ -34,10 +34,3 @@ class CertificateSigningRequest:
         except Exception as e:
             print(Fore.RED + f'Error: CSR Failed to Write! {e}')
             return None
-
-asymkeygen = Asymmetric_Keys()
-asymkeygen.Generate_Private_key()
-private_key = asymkeygen.private_key
-csr = CertificateSigningRequest(private_key)
-csr.Create_CSR()
-csr.Save_CSR()
