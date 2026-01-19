@@ -86,9 +86,3 @@ class Asymmetric_Keys:
         except Exception as e:
             print(Fore.RED + 'Error: Failed to Read PKI Public Key!')
             return None
-
-asymkeygen = Asymmetric_Keys()
-asymkeygen.Generate_Private_key()
-asymkeygen.Serialize_Private_key()
-asymkeygen.Extract_Public_key()
-asymkeygen.Serialize_Public_key()
