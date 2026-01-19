@@ -28,6 +28,3 @@ def get_ca_status():
     except Exception as e:
         print(Fore.RED + f'Error: Failed to connect to CA server! {e}')
         return None
-
-status = get_ca_status()
-print(status)
