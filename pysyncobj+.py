@@ -64,7 +64,7 @@ def onAdd(res, err, cnt):
     print('onAdd %d:' % cnt, res, err)
 
 if __name__ == '__main__':  
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         print('Usage: %s node_name' % sys.argv[0])
         print('Available nodes: node1, node2, node3, node4')
         sys.exit(-1)
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     node_name = sys.argv[1]
     
     if node_name not in nodes:
-        print(f'Node {node_name} not found in nodes.json')
+        print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
         sys.exit(-1)
     
     # Get this node's address
@@ -91,7 +91,15 @@ if __name__ == '__main__':
     
     print(f"Starting {node_name} on {self_addr}, connecting to {partner_addrs}")
     o = Raft(self_addr, partner_addrs, nodes)  # Pass nodes data to constructor
-    
+
+    with open('rsa_keys.json', 'r') as file:
+        rsa_keys = json.load(file)
+
+    key_size = sys.argv[2]
+    if key_size not in rsa_keys:
+        print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys,.json')
+        sys.exit(-1)
+
     n = 0
     old_value = -1
     while True:
