@@ -140,13 +140,3 @@ class CertificateAuthority:
         except Exception as e:
             print(Fore.RED + f'Error: CA Failed to Revoke Certificate!')
             return None
-
-certau = CertificateAuthority()
-certau.generate_ca_keys()
-certau.create_root_certificate()
-
-csr = certau.load_csr()
-if csr:
-    entity_cert = certau.sign_csr(csr)
-    if entity_cert:
-        certau.save_certificate(entity_cert)
