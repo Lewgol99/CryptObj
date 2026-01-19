@@ -1,7 +1,11 @@
 import requests
+import json
 from colorama import Fore
 
-CA_URL = "http://192.168.66.253:5000"
+with open('server_url.json', 'r') as file:
+    server = json.load(file)
+
+CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 
 def submit_csr_to_ca():
     try:
