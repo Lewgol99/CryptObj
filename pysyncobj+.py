@@ -26,7 +26,6 @@ if not os.path.exists('pki_private_key.pem'): # connect to CA
         print(Fore.GREEN + 'Certificate file created successfully!')
     else:
         print(Fore.RED + 'Certificate file was NOT created!')
-    exit()
 
 if not os.path.exists('certificate.pem'):
     print(Fore.RED + f'Error: No Certificate Found Cannot Start PySyncObj!!')
@@ -73,7 +72,7 @@ def onAdd(res, err, cnt):
 
 if __name__ == '__main__':  
     if len(sys.argv) < 3:
-        print('Usage: %s node_name' % sys.argv[0])
+        print('Usage: %s node_name key_size' % sys.argv[0])
         print('Available nodes: node1, node2, node3, node4')
         sys.exit(-1)
 
