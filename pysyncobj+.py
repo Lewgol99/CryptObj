@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     key_size = sys.argv[2]
     if key_size not in rsa_keys:
-        print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys,.json')
+        print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys.json')
         sys.exit(-1)
 
     n = 0
