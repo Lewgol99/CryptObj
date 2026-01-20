@@ -120,6 +120,6 @@ if __name__ == '__main__':
             o.addValue(10, n, callback=partial(onAdd, cnt=n))
         
         if n % 10 == 0:
-            o.run_policies()
+            o.run_scripts()
             
         n += 1
