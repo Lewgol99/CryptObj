@@ -14,6 +14,7 @@ from cryptography.fernet import Fernet
 
 key = Fernet.generate_key()
 cipher = Fernet(key)
+
 status = get_ca_status() # connect to the flask server
 print(Fore.CYAN + f'CA Status: {status}')
 
@@ -41,6 +42,7 @@ class Raft(SyncObj):
         conf = SyncObjConf()
         conf.logCompactionMinEntries = 2  # Completely disable log compaction
         conf.logCompactionMinTime = 2
+        conf.password = "SecureRaft2026" # Add PySyncObj built in encryption over the wire - COMMENT OUT FOR PLAINTEXT
         super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
         self.__counter = 0
         self.nodes_data = nodes_data  # Store the nodes data
