@@ -10,7 +10,10 @@ from memory_monitor import MemoryMonitor
 from pki_setup import PKI
 import os
 from request import get_ca_status, submit_csr_to_ca
+from cryptography.fernet import Fernet
 
+key = Fernet.generate_key()
+cipher = Fernet(key)
 status = get_ca_status() # connect to the flask server
 print(Fore.CYAN + f'CA Status: {status}')
 
@@ -109,11 +112,13 @@ if __name__ == '__main__':
 
     n = 0
     old_value = -1
-    while True:
-        time.sleep(0.5)
-        if o.getCounter() != old_value:
-            old_value = o.getCounter()
-            print(old_value)
+    
+while True:
+    time.sleep(0.5)
+    if o.getCounter() != old_value:
+        old_value = o.getCounter()
+        encrypted = cipher.encrypt(str(old_value).encode())
+        print(encrypted)
         if o._getLeader() is None:
             continue
         if n < 20:
