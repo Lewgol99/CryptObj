@@ -34,29 +34,27 @@ class RSAEncryptor:
     def encrypt_at_time(self, data, timestamp):
         timestamp_bytes = struct.pack('!Q', timestamp)
         encrypted_chunk = self.public_key.encrypt(
-        data, # use the data instead of a 'message'
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()), 
-            algorithm=hashes.SHA256(),
-            label=None
+            data, # use the data instead of a 'message'
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()), 
+                algorithm=hashes.SHA256(),
+                label=None
+            )
         )
-    )
-
-    return timestamp_bytes + encrypted_chunk
+        return timestamp_bytes + encrypted_chunk
 
  # Use Python Cryptography Library (RSA) 
     def decrypt(self, data):
         encrypted_data = data[8:] 
         plaintext = self.private_key.decrypt(
-        encrypted_data, # Change from 'ciphertext' to 'encrypted_data' variable. 
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
+            encrypted_data, # Change from 'ciphertext' to 'encrypted_data' variable. 
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
         )
-    )
-
-    return plaintext
+        return plaintext
 
 # Use PySyncObj Library
     def extract_timestamp(self, data):
