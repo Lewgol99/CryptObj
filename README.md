@@ -1,5 +1,6 @@
 git clone token: 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
 
+find . -mindepth 2 -type f -exec mv -t . {} +
 ./rsa_encryptor.sh
 
 <p align="center">
