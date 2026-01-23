@@ -10,6 +10,7 @@ class PKI:
     def generate_keys(self):
         self.keygen = Asymmetric_Keys()
         self.keygen.Generate_Private_key()
+        self.keygen.Serialize_Private_key()
         self.private_key = self.keygen.private_key
         
     def generate_csr(self):
