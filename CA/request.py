@@ -8,6 +8,7 @@ with open('server_url.json', 'r') as file:
 CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 
 def submit_csr_to_ca(node_name):
+    try:
         with open('csr.pem', 'r') as f:
             csr_pem = f.read()
         
@@ -27,10 +28,6 @@ def submit_csr_to_ca(node_name):
         
         # Save with node name
         with open(f'{node_name}_certificate.pem', 'w') as f:
-            f.write(cert_pem)
-        
-        # Also save as generic certificate.pem
-        with open('certificate.pem', 'w') as f:
             f.write(cert_pem)
         
         print(Fore.GREEN + f'Success: Certificate saved as {node_name}_certificate.pem and certificate.pem!') 
