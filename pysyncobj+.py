@@ -35,8 +35,8 @@ if __name__ == '__main__':
         else:
             print(Fore.RED + 'Certificate file was NOT created!')
 
-    if not os.path.exists('certificate.pem'):
-        print(Fore.RED + f'Error: No Certificate Found Cannot Start PySyncObj!!')
+    if not os.path.exists(f'{node_name}_certificate.pem'):
+        print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
         exit(0)
 
     print(Fore.GREEN + f'Certificate Found Starting PySyncObj!')
