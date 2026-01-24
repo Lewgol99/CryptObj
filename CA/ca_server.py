@@ -23,6 +23,7 @@ def server_status():
 def sign_csr():
     data = request.get_json()
     csr_pem = data.get('csr')
+    node_name = data.get('node_name')  # Add this
 
     with open('csr.pem', 'wb') as f:
         f.write(csr_pem.encode())
@@ -32,23 +33,17 @@ def sign_csr():
         cert = ca.sign_csr(csr)
         if cert:
             cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+            
+            # Store it automatically
+            os.makedirs('issued_certificates', exist_ok=True)
+            with open(f'issued_certificates/{node_name}_certificate.pem', 'w') as f:
+                f.write(cert_pem)
+            print(f'✓ Stored {node_name}_certificate.pem')
+            
             return jsonify({'certificate': cert_pem}), 200
     
     return jsonify({'Error': 'Failed'}), 500
-    
-@app.route('/api/get_all_certificates', methods=['GET'])
-def get_all_certificates():
-    """Return all issued certificates"""
-    certificates = {}
-    
-    # Read all .pem files from issued_certificates directory
-    for filename in os.listdir(CERTS_DIR):
-        if filename.endswith('_certificate.pem'):
-            node_name = filename.replace('_certificate.pem', '')
-            with open(f'{certs}/{filename}', 'r') as f:
-                certificates[node_name] = f.read()
-    
-    return jsonify({'certificates': certificates})
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000)
