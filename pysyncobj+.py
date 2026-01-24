@@ -10,70 +10,6 @@ from memory_monitor import MemoryMonitor
 from pki_setup import PKI
 import os
 from request import get_ca_status, submit_csr_to_ca
-from cryptography.fernet import Fernet
-
-key = Fernet.generate_key()
-cipher = Fernet(key)
-
-status = get_ca_status() # connect to the flask server
-print(Fore.CYAN + f'CA Status: {status}')
-
-if not os.path.exists('pki_private_key.pem'): # connect to CA
-    print(Fore.YELLOW + 'No private key found, generating...')
-    pki = PKI()
-    pki.generate_keys()
-    pki.generate_csr()
-    print(Fore.YELLOW + 'About to submit CSR to CA...')
-    result = submit_csr_to_ca()
-    print(Fore.YELLOW + f'CSR submission result: {result}')
-    if os.path.exists('certificate.pem'):
-        print(Fore.GREEN + 'Certificate file created successfully!')
-    else:
-        print(Fore.RED + 'Certificate file was NOT created!')
-
-if not os.path.exists('certificate.pem'):
-    print(Fore.RED + f'Error: No Certificate Found Cannot Start PySyncObj!!')
-    exit(0)
-
-print(Fore.GREEN + f'Certificate Found STarting PySyncObj!')
-
-class Raft(SyncObj):
-    def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data):
-        conf = SyncObjConf()
-        conf.logCompactionMinEntries = 2  # Completely disable log compaction
-        conf.logCompactionMinTime = 2
-        conf.password = "SecureRaft2026" # Add PySyncObj built in encryption over the wire - COMMENT OUT FOR PLAINTEXT
-        super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
-        self.__counter = 0
-        self.nodes_data = nodes_data  # Store the nodes data
-
-    @replicated
-    def incCounter(self):
-        self.__counter += 1
-    
-    @replicated
-    def addValue(self, value, cn): 
-        self.__counter += value
-        return self.__counter, cn
-    
-    def getCounter(self):
-        return self.__counter
-
-    def getNodes(self):
-        print(self.nodes_data)  
-        return self.nodes_data
-
-    def run_scripts(self):
-        # Create fresh instances each time - no serialization issues
-        memory_monitor = MemoryMonitor()
-        cpu_monitor = CPUMonitor()
-        
-        # Start monitoring
-        memory_monitor.start_monitoring()
-        cpu_monitor.start_monitoring()
-
-def onAdd(res, err, cnt):
-    print('onAdd %d:' % cnt, res, err)
 
 if __name__ == '__main__':  
     if len(sys.argv) < 3:
@@ -81,10 +17,67 @@ if __name__ == '__main__':
         print('Available nodes: node1, node2, node3, node4')
         sys.exit(-1)
 
+    node_name = sys.argv[1]
+
+    status = get_ca_status()
+    print(Fore.CYAN + f'CA Status: {status}')
+
+    if not os.path.exists('pki_private_key.pem'):
+        print(Fore.YELLOW + 'No private key found, generating...')
+        pki = PKI()
+        pki.generate_keys()
+        pki.generate_csr()
+        print(Fore.YELLOW + 'About to submit CSR to CA...')
+        result = submit_csr_to_ca(node_name)
+        print(Fore.YELLOW + f'CSR submission result: {result}')
+        if os.path.exists('certificate.pem'):
+            print(Fore.GREEN + 'Certificate file created successfully!')
+        else:
+            print(Fore.RED + 'Certificate file was NOT created!')
+
+    if not os.path.exists('certificate.pem'):
+        print(Fore.RED + f'Error: No Certificate Found Cannot Start PySyncObj!!')
+        exit(0)
+
+    print(Fore.GREEN + f'Certificate Found Starting PySyncObj!')
+
+    class Raft(SyncObj):
+        def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data):
+            conf = SyncObjConf()
+            conf.logCompactionMinEntries = 2
+            conf.logCompactionMinTime = 2
+            conf.password = "SecureRaft2026"
+            super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
+            self.__counter = 0
+            self.nodes_data = nodes_data
+
+        @replicated
+        def incCounter(self):
+            self.__counter += 1
+        
+        @replicated
+        def addValue(self, value, cn): 
+            self.__counter += value
+            return self.__counter, cn
+        
+        def getCounter(self):
+            return self.__counter
+
+        def getNodes(self):
+            print(self.nodes_data)  
+            return self.nodes_data
+
+        def run_scripts(self):
+            memory_monitor = MemoryMonitor()
+            cpu_monitor = CPUMonitor()
+            memory_monitor.start_monitoring()
+            cpu_monitor.start_monitoring()
+
+    def onAdd(res, err, cnt):
+        print('onAdd %d:' % cnt, res, err)
+
     with open('nodes.json', 'r') as file:
         nodes = json.load(file)
-    
-    node_name = sys.argv[1]
     
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -102,7 +95,7 @@ if __name__ == '__main__':
             partner_addrs.append(partner_addr)
     
     print(f"Starting {node_name} on {self_addr}, connecting to {partner_addrs}")
-    o = Raft(self_addr, partner_addrs, nodes)  # Pass nodes data to constructor
+    o = Raft(self_addr, partner_addrs, nodes)
 
     with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
@@ -115,18 +108,17 @@ if __name__ == '__main__':
     n = 0
     old_value = -1
     
-while True:
-    time.sleep(0.5)
-    if o.getCounter() != old_value:
-        old_value = o.getCounter()
-        encrypted = cipher.encrypt(str(old_value).encode())
-        print(encrypted)
-        if o._getLeader() is None:
-            continue
-        if n < 20:
-            o.addValue(10, n, callback=partial(onAdd, cnt=n))
-        
-        if n % 10 == 0:
-            o.run_scripts()
+    while True:
+        time.sleep(0.5)
+        if o.getCounter() != old_value:
+            old_value = o.getCounter()
+            print(f"Counter: {old_value}")
+            if o._getLeader() is None:
+                continue
+            if n < 20:
+                o.addValue(10, n, callback=partial(onAdd, cnt=n))
             
-        n += 1
+            if n % 10 == 0:
+                o.run_scripts()
+                
+            n += 1
