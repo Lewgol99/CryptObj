@@ -42,11 +42,12 @@ if __name__ == '__main__':
     print(Fore.GREEN + f'Certificate Found Starting PySyncObj!')
 
     class Raft(SyncObj):
-        def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data):
+        def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data, node_name):
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
             conf.password = "SecureRaft2026"
+            conf.node_name = node_name  # ← Add this line for PySyncObj+
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
             self.__counter = 0
             self.nodes_data = nodes_data
@@ -95,7 +96,7 @@ if __name__ == '__main__':
             partner_addrs.append(partner_addr)
     
     print(f"Starting {node_name} on {self_addr}, connecting to {partner_addrs}")
-    o = Raft(self_addr, partner_addrs, nodes)
+    o = Raft(self_addr, partner_addrs, nodes, node_name)  # ← Pass node_name
 
     with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
