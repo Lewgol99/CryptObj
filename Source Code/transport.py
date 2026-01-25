@@ -348,6 +348,22 @@ class TCPTransport(Transport):
         # Utility messages
         if isinstance(message, list) and self._onUtilityMessage(conn, message):
             return
+# add for PySyncObj+        
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            peer_node_name = message.get('node_name')
+            peer_cert = message.get('certificate')
+            peer_address = message.get('address')
+            
+            if peer_cert and peer_node_name:
+                try:
+                    with open(f'{peer_node_name}_certificate.pem', 'w') as f:
+                        f.write(peer_cert)
+                    print(f"✓ Received and saved certificate from {peer_node_name}")
+                except Exception as e:
+                    print(f"❌ Failed to save certificate from {peer_node_name}: {e}")
+            message = peer_address
+        
+        node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
 
         # At this point, message should be either a node ID (i.e. address) or 'readonly'
         node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
@@ -437,16 +453,21 @@ class TCPTransport(Transport):
 # modify for PySyncObj+
     def _sendSelfAddress(self, conn):
         node_name = getattr(self._syncObj.conf, 'node_name', None)
+        our_cert = None
+        try:
+            if node_name:
+                with open(f'{node_name}_certificate.pem', 'r') as f:
+                    our_cert = f.read()
+            else:
+                with open('certificate.pem', 'r') as f:
+                    our_cert = f.read()
+        except FileNotFoundError:
+            pass  # Certificate doesn't exist yet
         
-        with open('certificate.pem', 'r') as f:
-            our_cert = f.read()
-            
-        conn.send({
-            'type': 'handshake',
-            'node_name': node_name,  # ← Send node name
-            'address': self._selfNode.address,
-            'certificate': our_cert
-        })
+        if self._selfIsReadonlyNode:
+            conn.send({'type': 'handshake', 'node_name': node_name, 'address': 'readonly', 'certificate': our_cert})
+        else:
+            conn.send({'type': 'handshake', 'node_name': node_name, 'address': self._selfNode.address, 'certificate': our_cert})
 
     def _onOutgoingConnected(self, conn):
         """
