@@ -434,11 +434,19 @@ class TCPTransport(Transport):
         for node in self._nodes:
             self._connectIfNecessarySingle(node)
 
+# modify for PySyncObj+
     def _sendSelfAddress(self, conn):
-        if self._selfIsReadonlyNode:
-            conn.send('readonly')
-        else:
-            conn.send(self._selfNode.address)
+        node_name = getattr(self._syncObj.conf, 'node_name', None)
+        
+        with open('certificate.pem', 'r') as f:
+            our_cert = f.read()
+            
+        conn.send({
+            'type': 'handshake',
+            'node_name': node_name,  # ← Send node name
+            'address': self._selfNode.address,
+            'certificate': our_cert
+        })
 
     def _onOutgoingConnected(self, conn):
         """
