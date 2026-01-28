@@ -358,9 +358,13 @@ class TCPTransport(Transport):
                 try:
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
                         f.write(peer_cert)
-                    print(f"✓ Received and saved certificate from {peer_node_name}")
+                    print(f"✓ [INCOMING] Received and saved certificate from {peer_node_name}")
                 except Exception as e:
-                    print(f"❌ Failed to save certificate from {peer_node_name}: {e}")
+                    print(f"❌ [INCOMING] Failed to save certificate from {peer_node_name}: {e}")
+            
+            # Send our certificate back to complete the exchange
+            self._sendSelfAddress(conn)
+            
             message = peer_address
         
         node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
@@ -484,9 +488,38 @@ class TCPTransport(Transport):
             conn.recvRandKey = os.urandom(32)
             conn.send(conn.recvRandKey)
         else:
+            # Wait for handshake response before proceeding
+            conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
             self._sendSelfAddress(conn)
-            # The onMessageReceived callback is configured in addNode already.
-            self._onNodeConnected(self._connToNode(conn))
+
+    def _onOutgoingHandshakeResponse(self, conn, message):
+        """
+        Callback for receiving handshake response on outgoing connections.
+        This processes the peer's certificate before switching to normal message handling.
+
+        :param conn: connection object
+        :type conn: TcpConnection
+        :param message: received handshake message
+        :type message: dict
+        """
+
+        # Process incoming handshake with certificate
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            peer_node_name = message.get('node_name')
+            peer_cert = message.get('certificate')
+            
+            if peer_cert and peer_node_name:
+                try:
+                    with open(f'{peer_node_name}_certificate.pem', 'w') as f:
+                        f.write(peer_cert)
+                    print(f"✓ [OUTGOING] Received and saved certificate from {peer_node_name}")
+                except Exception as e:
+                    print(f"❌ [OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
+        
+        # Now switch to normal message handling
+        node = self._connToNode(conn)
+        conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
+        self._onNodeConnected(node)
 
     def _onOutgoingMessageReceived(self, conn, message):
         """
@@ -502,7 +535,11 @@ class TCPTransport(Transport):
         if not conn.sendRandKey:
             conn.sendRandKey = message
             self._sendSelfAddress(conn)
+            # Wait for handshake response
+            conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
+            return
 
+        # This path shouldn't be reached anymore
         node = self._connToNode(conn)
         conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
         self._onNodeConnected(node)
