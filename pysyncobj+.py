@@ -41,12 +41,16 @@ if __name__ == '__main__':
 
     print(Fore.GREEN + f'Certificate Found Starting PySyncObj!')
 
+    # Set NODE_NAME environment variable BEFORE creating Raft object
+    os.environ['NODE_NAME'] = node_name
+
     class Raft(SyncObj):
         def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data, node_name):
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
             conf.password = "SecureRaft2026"
+            conf.encryptor = True
             conf.node_name = node_name  # ← Add this line for PySyncObj+
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
             self.__counter = 0
