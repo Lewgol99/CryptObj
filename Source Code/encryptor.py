@@ -131,7 +131,8 @@ class RSAEncryptor:
 
     def encrypt_at_time(self, data, timestamp):
         """
-        Hybrid encryption approach - ALWAYS ENCRYPT if we have peer certificates
+        Pure RSA asymmetric encryption with chunking - encrypt data for each peer using their public key
+        If data is larger than RSA limit, split into chunks
         """
         try:
             # Check for new certificates
@@ -143,47 +144,54 @@ class RSAEncryptor:
                 timestamp_bytes = struct.pack('!Q', timestamp)
                 return timestamp_bytes + data
             
-            print(f"🔐 ENCRYPTING {len(data)} bytes for {len(self.public_keys)} peers")
+            # RSA-2048 with OAEP can encrypt max ~214 bytes
+            # RSA-4096 with OAEP can encrypt max ~446 bytes
+            # Use conservative limit of 190 bytes to be safe
+            MAX_CHUNK_SIZE = 190
+            
+            # Split data into chunks if needed
+            data_chunks = []
+            if len(data) <= MAX_CHUNK_SIZE:
+                data_chunks = [data]
+                print(f"🔐 RSA ENCRYPTING {len(data)} bytes (1 chunk) for {len(self.public_keys)} peers")
+            else:
+                for i in range(0, len(data), MAX_CHUNK_SIZE):
+                    data_chunks.append(data[i:i+MAX_CHUNK_SIZE])
+                print(f"🔐 RSA ENCRYPTING {len(data)} bytes ({len(data_chunks)} chunks) for {len(self.public_keys)} peers")
             
             timestamp_bytes = struct.pack('!Q', timestamp)
             
-            # Generate random AES key (32 bytes = 256 bits)
-            aes_key = os.urandom(32)
-            iv = os.urandom(16)
-            
-            # Encrypt data with AES
-            cipher = Cipher(algorithms.AES(aes_key), modes.CFB(iv), backend=default_backend())
-            encryptor = cipher.encryptor()
-            encrypted_data = encryptor.update(data) + encryptor.finalize()
-            
-            # Encrypt AES key for each peer using their public key
-            encrypted_keys = []
-            peer_count = len(self.public_keys)
-            
-            for peer_name, public_key in self.public_keys.items():
-                encrypted_aes_key = public_key.encrypt(
-                    aes_key,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
-                encrypted_keys.append(encrypted_aes_key)
-            
             # Package format:
-            # [timestamp:8][peer_count:2][key1_len:2][key1][key2_len:2][key2]...[iv:16][encrypted_data]
+            # [timestamp:8][peer_count:2][num_data_chunks:2]
+            # For each peer: [peer_chunk_count:2][chunk1_len:2][chunk1][chunk2_len:2][chunk2]...
             result = timestamp_bytes
-            result += struct.pack('!H', peer_count)
+            result += struct.pack('!H', len(self.public_keys))  # peer_count
+            result += struct.pack('!H', len(data_chunks))  # num_data_chunks
             
-            for enc_key in encrypted_keys:
-                result += struct.pack('!H', len(enc_key))
-                result += enc_key
+            # Encrypt each data chunk for each peer
+            for peer_name, public_key in self.public_keys.items():
+                peer_encrypted_chunks = []
+                
+                for chunk_idx, data_chunk in enumerate(data_chunks):
+                    encrypted_chunk = public_key.encrypt(
+                        data_chunk,
+                        padding.OAEP(
+                            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                            algorithm=hashes.SHA256(),
+                            label=None
+                        )
+                    )
+                    peer_encrypted_chunks.append(encrypted_chunk)
+                
+                print(f"🔐   Encrypted {len(data_chunks)} chunk(s) for peer: {peer_name}")
+                
+                # Store this peer's encrypted chunks
+                result += struct.pack('!H', len(peer_encrypted_chunks))
+                for enc_chunk in peer_encrypted_chunks:
+                    result += struct.pack('!H', len(enc_chunk))
+                    result += enc_chunk
             
-            result += iv
-            result += encrypted_data
-            
-            print(f"🔐 ENCRYPTED SUCCESS: {len(result)} bytes (was {len(data)} bytes plaintext)")
+            print(f"🔐 RSA ENCRYPTED SUCCESS: {len(result)} bytes (was {len(data)} bytes plaintext)")
             return result
             
         except Exception as e:
@@ -193,14 +201,15 @@ class RSAEncryptor:
 
     def decrypt(self, data):
         """
-        Decrypt using THIS node's private key - or passthrough if encryption not enabled
+        Decrypt using THIS node's RSA private key - or passthrough if encryption not enabled
+        Handles chunked data for large messages
         """
         try:
             # Check for new certificates
             self._load_certificates()
             
             # Check if this is encrypted data or passthrough data
-            if len(data) < 12:
+            if len(data) < 14:  # Need at least timestamp + peer_count + num_chunks
                 # Too short to be encrypted, must be passthrough
                 print(f"🔓 PASSTHROUGH (too short): {len(data)} bytes")
                 return data[8:]  # Skip timestamp
@@ -222,56 +231,75 @@ class RSAEncryptor:
                 print(f"🔓 PASSTHROUGH (parse error): {len(data)} bytes")
                 return data[8:]
             
-            print(f"🔓 DECRYPTING {len(data)} bytes (peer_count={peer_count})")
             offset += 2
             
-            # Extract all encrypted AES keys
-            encrypted_keys = []
-            for i in range(peer_count):
-                if offset + 2 > len(data):
-                    raise ValueError(f"Not enough data for key {i} length")
-                key_len = struct.unpack('!H', data[offset:offset+2])[0]
+            # Read number of data chunks
+            try:
+                num_data_chunks = struct.unpack('!H', data[offset:offset+2])[0]
+                if num_data_chunks == 0 or num_data_chunks > 100:
+                    print(f"🔓 PASSTHROUGH (invalid num_data_chunks={num_data_chunks}): {len(data)} bytes")
+                    return data[8:]
                 offset += 2
-                if offset + key_len > len(data):
-                    raise ValueError(f"Not enough data for key {i}")
-                encrypted_keys.append(data[offset:offset+key_len])
-                offset += key_len
+            except:
+                print(f"🔓 PASSTHROUGH (cannot read num_data_chunks): {len(data)} bytes")
+                return data[8:]
             
-            # Extract IV
-            if offset + 16 > len(data):
-                raise ValueError("Not enough data for IV")
-            iv = data[offset:offset+16]
-            offset += 16
+            print(f"🔓 RSA DECRYPTING {len(data)} bytes (peer_count={peer_count}, chunks={num_data_chunks})")
             
-            # Extract encrypted data
-            encrypted_data = data[offset:]
+            # Extract encrypted chunks for each peer
+            all_peer_chunks = []
+            for peer_idx in range(peer_count):
+                # Read chunk count for this peer
+                if offset + 2 > len(data):
+                    raise ValueError(f"Not enough data for peer {peer_idx} chunk count")
+                peer_chunk_count = struct.unpack('!H', data[offset:offset+2])[0]
+                offset += 2
+                
+                peer_chunks = []
+                for chunk_idx in range(peer_chunk_count):
+                    if offset + 2 > len(data):
+                        raise ValueError(f"Not enough data for peer {peer_idx} chunk {chunk_idx} length")
+                    chunk_len = struct.unpack('!H', data[offset:offset+2])[0]
+                    offset += 2
+                    if offset + chunk_len > len(data):
+                        raise ValueError(f"Not enough data for peer {peer_idx} chunk {chunk_idx}")
+                    peer_chunks.append(data[offset:offset+chunk_len])
+                    offset += chunk_len
+                
+                all_peer_chunks.append(peer_chunks)
             
-            # Try to decrypt one of the AES keys with our private key
-            aes_key = None
-            for idx, enc_key in enumerate(encrypted_keys):
+            # Try to decrypt chunks using our private key
+            decrypted_chunks = None
+            for peer_idx, peer_chunks in enumerate(all_peer_chunks):
                 try:
-                    aes_key = self.private_key.decrypt(
-                        enc_key,
-                        padding.OAEP(
-                            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                            algorithm=hashes.SHA256(),
-                            label=None
+                    # Try to decrypt all chunks for this peer
+                    temp_decrypted = []
+                    for chunk_idx, encrypted_chunk in enumerate(peer_chunks):
+                        decrypted_chunk = self.private_key.decrypt(
+                            encrypted_chunk,
+                            padding.OAEP(
+                                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                                algorithm=hashes.SHA256(),
+                                label=None
+                            )
                         )
-                    )
-                    print(f"🔓 ✅ Decrypted AES key #{idx}")
+                        temp_decrypted.append(decrypted_chunk)
+                    
+                    # If we got here, all chunks decrypted successfully
+                    decrypted_chunks = temp_decrypted
+                    print(f"🔓 ✅ Successfully decrypted {len(decrypted_chunks)} chunk(s) from peer #{peer_idx}")
                     break
                 except Exception:
+                    # This peer's chunks weren't for us, try next peer
                     continue
             
-            if aes_key is None:
-                raise ValueError("Could not decrypt message - no valid key found for this node")
+            if decrypted_chunks is None:
+                raise ValueError("Could not decrypt message - no valid chunks found for this node")
             
-            # Decrypt data with AES
-            cipher = Cipher(algorithms.AES(aes_key), modes.CFB(iv), backend=default_backend())
-            decryptor = cipher.decryptor()
-            plaintext = decryptor.update(encrypted_data) + decryptor.finalize()
+            # Reassemble the original data from chunks
+            plaintext = b''.join(decrypted_chunks)
             
-            print(f"🔓 DECRYPTED SUCCESS: {len(plaintext)} bytes")
+            print(f"🔓 RSA DECRYPTED SUCCESS: {len(plaintext)} bytes")
             return plaintext
             
         except Exception as e:
