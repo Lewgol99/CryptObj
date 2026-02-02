@@ -330,45 +330,50 @@ class TCPTransport(Transport):
 
     def _onIncomingMessageReceived(self, conn, message):
         """
-        Callback for initial messages on incoming connections. Handles encryption, utility messages, and association of the connection with a Node.
-        Once this initial setup is done, the relevant connected callback is executed, and further messages are deferred to the onMessageReceived callback.
-
+        Callback for initial messages on incoming connections.
+        
+        FOR PURE RSA:
+        - First message is UNENCRYPTED handshake with certificate
+        - We save the peer's certificate
+        - We send our certificate back (UNENCRYPTED)
+        - After handshake, all messages are RSA ENCRYPTED
+        
         :param conn: connection object
         :type conn: TcpConnection
         :param message: received message
         :type message: any
         """
 
-        if self._syncObj.encryptor and not conn.sendRandKey:
-            conn.sendRandKey = message
-            conn.recvRandKey = os.urandom(32)
-            conn.send(conn.recvRandKey)
-            return
-
         # Utility messages
         if isinstance(message, list) and self._onUtilityMessage(conn, message):
             return
-# add for PySyncObj+        
+        
+        # Handle handshake with certificate exchange (UNENCRYPTED)
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
             peer_cert = message.get('certificate')
             peer_address = message.get('address')
             
+            # Save peer's certificate
             if peer_cert and peer_node_name:
                 try:
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
                         f.write(peer_cert)
-                    print(f"✓ [INCOMING] Received and saved certificate from {peer_node_name}")
+                    print(f"✅ [INCOMING] Received and saved certificate from {peer_node_name}")
+                    
+                    # CRITICAL: Reload certificates in encryptor
+                    if self._syncObj.encryptor:
+                        self._syncObj.encryptor._load_certificates()
+                        
                 except Exception as e:
                     print(f"❌ [INCOMING] Failed to save certificate from {peer_node_name}: {e}")
             
-            # Send our certificate back to complete the exchange
+            # Send our certificate back (UNENCRYPTED handshake response)
             self._sendSelfAddress(conn)
             
+            # Continue with normal node association
             message = peer_address
         
-        node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
-
         # At this point, message should be either a node ID (i.e. address) or 'readonly'
         node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
 
@@ -386,7 +391,10 @@ class TCPTransport(Transport):
 
         self._unknownConnections.discard(conn)
         self._connections[node] = conn
+        
+        # From this point on, all messages are RSA ENCRYPTED
         conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
+        
         if not readonly:
             self._onNodeConnected(node)
         else:
@@ -454,10 +462,18 @@ class TCPTransport(Transport):
         for node in self._nodes:
             self._connectIfNecessarySingle(node)
 
-# modify for PySyncObj+
     def _sendSelfAddress(self, conn):
+        """
+        Send handshake with this node's certificate.
+        THIS MESSAGE IS SENT UNENCRYPTED to enable certificate exchange.
+        
+        :param conn: connection object
+        :type conn: TcpConnection
+        """
         node_name = getattr(self._syncObj.conf, 'node_name', None)
         our_cert = None
+        
+        # Try to read our certificate
         try:
             if node_name:
                 with open(f'{node_name}_certificate.pem', 'r') as f:
@@ -466,8 +482,10 @@ class TCPTransport(Transport):
                 with open('certificate.pem', 'r') as f:
                     our_cert = f.read()
         except FileNotFoundError:
+            print(f"⚠️  Warning: Certificate file not found for {node_name}")
             pass  # Certificate doesn't exist yet
         
+        # Send handshake message (UNENCRYPTED)
         if self._selfIsReadonlyNode:
             conn.send({'type': 'handshake', 'node_name': node_name, 'address': 'readonly', 'certificate': our_cert})
         else:
@@ -475,34 +493,40 @@ class TCPTransport(Transport):
 
     def _onOutgoingConnected(self, conn):
         """
-        Callback for when a new connection from this to another node is established. Handles encryption and informs the other node which node this is.
-        If encryption is disabled, this triggers the onNodeConnected callback and messages are deferred to the onMessageReceived callback.
-        If encryption is enabled, the first message is handled by _onOutgoingMessageReceived.
-
+        Callback for when a new connection from this to another node is established.
+        
+        FOR PURE RSA ENCRYPTION:
+        1. Send handshake UNENCRYPTED (with our certificate)
+        2. Wait for handshake response UNENCRYPTED (with peer's certificate)
+        3. Save peer's certificate to disk
+        4. Enable RSA encryption for all subsequent messages
+        
+        NO SYMMETRIC KEY EXCHANGE - PURE RSA ONLY
+        
         :param conn: connection object
         :type conn: TcpConnection
         """
-
-        if self._syncObj.encryptor:
-            conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingMessageReceived, conn)) # So we can process the sendRandKey
-            conn.recvRandKey = os.urandom(32)
-            conn.send(conn.recvRandKey)
-        else:
-            # Wait for handshake response before proceeding
-            conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
-            self._sendSelfAddress(conn)
+        
+        # Set callback to receive handshake response
+        conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
+        
+        # Send our handshake (UNENCRYPTED)
+        self._sendSelfAddress(conn)
 
     def _onOutgoingHandshakeResponse(self, conn, message):
         """
         Callback for receiving handshake response on outgoing connections.
         This processes the peer's certificate before switching to normal message handling.
-
+        
+        IMPORTANT: This message arrives UNENCRYPTED
+        After processing, all future messages use RSA encryption
+        
         :param conn: connection object
         :type conn: TcpConnection
         :param message: received handshake message
         :type message: dict
         """
-
+        
         # Process incoming handshake with certificate
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
@@ -510,36 +534,21 @@ class TCPTransport(Transport):
             
             if peer_cert and peer_node_name:
                 try:
+                    # Save peer's certificate
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
                         f.write(peer_cert)
-                    print(f"✓ [OUTGOING] Received and saved certificate from {peer_node_name}")
+                    print(f"✅ [OUTGOING] Received and saved certificate from {peer_node_name}")
+                    
+                    # CRITICAL: Tell encryptor to reload certificates
+                    if self._syncObj.encryptor:
+                        self._syncObj.encryptor._load_certificates()
+                        
                 except Exception as e:
                     print(f"❌ [OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
+            else:
+                print(f"⚠️  [OUTGOING] Handshake missing certificate or node_name")
         
-        # Now switch to normal message handling
-        node = self._connToNode(conn)
-        conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
-        self._onNodeConnected(node)
-
-    def _onOutgoingMessageReceived(self, conn, message):
-        """
-        Callback for receiving a message on a new outgoing connection. Used only if encryption is enabled to exchange the random keys.
-        Once the key exchange is done, this triggers the onNodeConnected callback, and further messages are deferred to the onMessageReceived callback.
-
-        :param conn: connection object
-        :type conn: TcpConnection
-        :param message: received message
-        :type message: any
-        """
-
-        if not conn.sendRandKey:
-            conn.sendRandKey = message
-            self._sendSelfAddress(conn)
-            # Wait for handshake response
-            conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
-            return
-
-        # This path shouldn't be reached anymore
+        # Now switch to normal (ENCRYPTED) message handling
         node = self._connToNode(conn)
         conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
         self._onNodeConnected(node)
