@@ -12,6 +12,18 @@ import glob
 import traceback
 import time
 
+# Initialize colorama for cross-platform color support
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+except ImportError:
+    # Fallback if colorama not available
+    class Fore:
+        RED = '\033[31m'
+        MAGENTA = '\033[35m'
+    class Style:
+        RESET_ALL = '\033[0m'
+
 # Use PySyncObj Library
 HAS_CRYPTO = True
 
@@ -135,6 +147,12 @@ class RSAEncryptor:
         If data is larger than RSA limit, split into chunks
         """
         try:
+            # === SHOW PLAINTEXT BEFORE ENCRYPTION ===
+            plaintext_preview = data[:80] if len(data) <= 80 else data[:80] + b'...'
+            print(f"\n📤 SENDING: Plaintext ({len(data)} bytes)")
+            print(f"   {Fore.MAGENTA}{plaintext_preview}{Style.RESET_ALL}")
+            print(f"   ⬇️ ENCRYPTING...")
+            
             # Check for new certificates
             self._load_certificates()
             
@@ -191,7 +209,9 @@ class RSAEncryptor:
                     result += struct.pack('!H', len(enc_chunk))
                     result += enc_chunk
             
-            print(f"🔐 RSA ENCRYPTED SUCCESS: {len(result)} bytes (was {len(data)} bytes plaintext)")
+            # === SHOW CIPHERTEXT AFTER ENCRYPTION ===
+            print(f"   ✅ Encrypted to {len(result)} bytes")
+            print(f"🔒 CIPHERTEXT SENT: {Fore.RED}{result[:40].hex()}...{Style.RESET_ALL}\n")
             return result
             
         except Exception as e:
@@ -205,6 +225,9 @@ class RSAEncryptor:
         Handles chunked data for large messages
         """
         try:
+            # === SHOW CIPHERTEXT BEFORE DECRYPTION ===
+            print(f"\n📥 CIPHERTEXT RECEIVED: {Fore.RED}{data[:50].hex()}...{Style.RESET_ALL} ({len(data)} bytes)")
+            
             # Check for new certificates
             self._load_certificates()
             
@@ -244,7 +267,9 @@ class RSAEncryptor:
                 print(f"🔓 PASSTHROUGH (cannot read num_data_chunks): {len(data)} bytes")
                 return data[8:]
             
-            print(f"🔓 RSA DECRYPTING {len(data)} bytes (peer_count={peer_count}, chunks={num_data_chunks})")
+            print(f"\n📥 RECEIVED: Ciphertext ({len(data)} bytes)")
+            print(f"   {Fore.RED}{data[:40].hex()}...{Style.RESET_ALL}")
+            print(f"   ⬇️ DECRYPTING {peer_count} peer(s), {num_data_chunks} chunk(s)...")
             
             # Extract encrypted chunks for each peer
             all_peer_chunks = []
@@ -298,6 +323,29 @@ class RSAEncryptor:
             
             # Reassemble the original data from chunks
             plaintext = b''.join(decrypted_chunks)
+            
+            # === SHOW PLAINTEXT AFTER DECRYPTION ===
+            print(f"   ✅ Decrypted to {len(plaintext)} bytes")
+            plaintext_preview = plaintext[:60] if len(plaintext) <= 60 else plaintext[:60] + b'...'
+            print(f"📜 PLAINTEXT: {Fore.MAGENTA}{plaintext_preview}{Style.RESET_ALL}")
+            
+            # === SHOW COUNTER VALUE IF PRESENT ===
+            try:
+                import pickle, zlib
+                decompressed = zlib.decompress(plaintext)
+                data_obj = pickle.loads(decompressed)
+                
+                # Check if it's actual counter operation (not just heartbeat)
+                if isinstance(data_obj, dict) and data_obj.get('type') == 'append_entries':
+                    if data_obj.get('entries'):
+                        print(f"   💾 Replicated {len(data_obj['entries'])} log entries")
+                elif isinstance(data_obj, tuple) and len(data_obj) >= 2:
+                    method, args = data_obj[0], data_obj[1]
+                    print(f"   🎯 RPC Call: {method}{args}")
+            except:
+                pass  # Not counter data or failed to decode
+            
+            print()  # Blank line for readability
             
             print(f"🔓 RSA DECRYPTED SUCCESS: {len(plaintext)} bytes")
             return plaintext
