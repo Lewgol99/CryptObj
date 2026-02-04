@@ -46,6 +46,10 @@ if __name__ == '__main__':
 
     class Raft(SyncObj):
         def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data, node_name):
+            print("\n" + "="*70)
+            print("🚀 USING UPDATED SCRIPT WITH COUNTER DISPLAY!")
+            print("="*70 + "\n")
+            
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
@@ -62,6 +66,13 @@ if __name__ == '__main__':
         
         @replicated
         def addValue(self, value, cn): 
+            print(f"\n{'='*60}")
+            print(f"📊 [{node_name}] COUNTER OPERATION:")
+            print(f"   Value to add: {value}")
+            print(f"   Counter before: {self.__counter}")
+            print(f"   Counter after: {self.__counter + value}")
+            print(f"{'='*60}\n")
+            
             self.__counter += value
             return self.__counter, cn
         
@@ -115,15 +126,15 @@ if __name__ == '__main__':
     
     while True:
         time.sleep(0.5)
-        if o.getCounter() != old_value:
-            old_value = o.getCounter()
-            print(f"Counter: {old_value}")
-            if o._getLeader() is None:
-                continue
-            if n < 20:
-                o.addValue(10, n, callback=partial(onAdd, cnt=n))
-            
-            if n % 10 == 0:
-                o.run_scripts()
-                
+        
+        # Always try to increment if we're the leader
+        if o._getLeader() is not None and n < 20:
+            print(f"\n🚀 [{node_name}] Attempting to add value, n={n}")
+            o.addValue(10, n, callback=partial(onAdd, cnt=n))
             n += 1
+        
+        # Show counter value
+        current = o.getCounter()
+        if current != old_value:
+            old_value = current
+            print(f"📈 Counter changed to: {current}")
