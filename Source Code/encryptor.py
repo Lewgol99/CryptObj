@@ -1,3 +1,4 @@
+"""RSA Hybrid Encryptor: Fernet + RSA"""
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
@@ -42,7 +43,7 @@ def getEncryptor(password):
         except:
             pass
     
-    print(f"🔐 {node}: {len(pubs)} RSA certs, encrypt={'ON' if len(pubs)>=2 else 'OFF'}")
+    print(f"[{node}] {len(pubs)} RSA certs, encrypt={'ON' if len(pubs)>=2 else 'OFF'}")
     return RSAEncryptor(priv, pubs, node, cert_dir, base)
 
 class RSAEncryptor:
@@ -70,7 +71,7 @@ class RSAEncryptor:
                             if isinstance(pub, rsa.RSAPublicKey):
                                 self.pubs[name] = pub
                             else:
-                                print(f"⚠️  Skipping {name}: Not an RSA certificate (found {type(pub).__name__})")
+                                print(f"[SKIP] {name}: Not RSA cert ({type(pub).__name__})")
                     except:
                         pass
         if len(self.pubs) >= 2 and not self.enabled:
@@ -78,7 +79,7 @@ class RSAEncryptor:
     
     def encrypt_at_time(self, data, ts):
         try:
-            print(f"\n📤 SEND: {len(data)}B")
+            print(f"\n[SEND] {len(data)}B")
             print(f"   {Fore.MAGENTA}{_display(data)}{Style.RESET_ALL}")
             
             self._load_certificates()
@@ -97,11 +98,10 @@ class RSAEncryptor:
                 result += struct.pack('!H', len(ek)) + ek
             result += fe
             
-            print(f"   ✅ {len(result)}B total")
-            print(f"🔒 {Fore.RED}{result[:40].hex()}...{Style.RESET_ALL}\n")
+            print(f"🔒 {Fore.RED}{result[:40].hex()}...{Style.RESET_ALL} ({len(result)}B)\n")
             return result
         except Exception as e:
-            print(f"❌ ENCRYPT ERROR: {e}")
+            print(f"[ERROR] Encrypt: {e}")
             raise
     
     def decrypt(self, data):
@@ -117,7 +117,7 @@ class RSAEncryptor:
             except:
                 return data[8:]
             
-            print(f"\n📥 RECV: {len(data)}B")
+            print(f"\n[RECV] {len(data)}B")
             print(f"   {Fore.RED}{data[:40].hex()}...{Style.RESET_ALL}")
             
             # Extract and decrypt Fernet key
@@ -139,11 +139,10 @@ class RSAEncryptor:
             
             # Decrypt data
             pt = Fernet(fk).decrypt(data[offset:])
-            print(f"   ✅ {len(pt)}B plain")
-            print(f"📜 {Fore.MAGENTA}{_display(pt)}{Style.RESET_ALL}\n")
+            print(f"   {Fore.MAGENTA}{_display(pt)}{Style.RESET_ALL} ({len(pt)}B)\n")
             return pt
         except Exception as e:
-            print(f"❌ DECRYPT ERROR: {e}")
+            print(f"[ERROR] Decrypt: {e}")
             raise
     
     def extract_timestamp(self, data):
