@@ -11,6 +11,9 @@ from pki_setup import PKI
 import os
 from request import get_ca_status, submit_csr_to_ca
 
+memory_monitor = MemoryMonitor() 
+cpu_monitor = CPUMonitor()
+
 if __name__ == '__main__':  
     if len(sys.argv) < 3:
         print('Usage: %s node_name key_size' % sys.argv[0])
@@ -55,7 +58,7 @@ if __name__ == '__main__':
             conf.logCompactionMinTime = 2
             conf.password = "SecureRaft2026"
             conf.encryptor = True
-            conf.node_name = node_name  # ← Add this line for PySyncObj+
+            conf.node_name = node_name  # ← Added line for PySyncObj+ 
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf) 
             self.__counter = 0
             self.nodes_data = nodes_data
@@ -83,12 +86,6 @@ if __name__ == '__main__':
             print(self.nodes_data)  
             return self.nodes_data
 
-        def run_scripts(self):
-            memory_monitor = MemoryMonitor()
-            cpu_monitor = CPUMonitor()
-            memory_monitor.start_monitoring()
-            cpu_monitor.start_monitoring()
-
     def onAdd(res, err, cnt):
         print('onAdd %d:' % cnt, res, err)
 
@@ -112,6 +109,8 @@ if __name__ == '__main__':
     
     print(f"Starting {node_name} on {self_addr}, connecting to {partner_addrs}")
     o = Raft(self_addr, partner_addrs, nodes, node_name)  # ← Pass node_name
+    memory_monitor.start_monitoring() # start monitoring memory
+    cpu_monitor.start_monitoring() # start monitoring cpu
 
     with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
