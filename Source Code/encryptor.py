@@ -1,10 +1,10 @@
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 from colorama import Fore, Style, init
-import struct, os, glob, time
+import struct, glob
 
 init(autoreset=True)
 HAS_CRYPTO = True
@@ -18,131 +18,96 @@ def _display(data, n=100):
         return str(data[:80] if len(data) <= 80 else data[:80] + b'...')
 
 def getEncryptor(password):
-    node = os.environ.get('NODE_NAME')
-    base = os.getcwd()
-    cert_dir = os.path.join(base, node) if os.path.exists(os.path.join(base, node)) else base
-    
-    # Load private key
-    key_path = os.path.join(cert_dir, 'pki_private_key.pem')
-    if not os.path.exists(key_path):
-        key_path = os.path.join(base, 'pki_private_key.pem')
-    
-    with open(key_path, 'rb') as f:
-        priv = serialization.load_pem_private_key(f.read(), password=None, backend=default_backend())
-    
-    # Load public keys
-    certs = list(set(glob.glob(os.path.join(cert_dir, '*_certificate.pem')) + 
-                     glob.glob(os.path.join(base, '*_certificate.pem'))))
-    pubs = {}
-    for cf in certs:
-        try:
-            with open(cf, 'rb') as f:
-                pubs[os.path.basename(cf).replace('_certificate.pem', '')] = \
-                    x509.load_pem_x509_certificate(f.read(), default_backend()).public_key()
-        except:
-            pass
-    
-    print(f"[{node}] {len(pubs)} RSA certs, encrypt={'ON' if len(pubs)>=2 else 'OFF'}")
-    return RSAEncryptor(priv, pubs, node, cert_dir, base)
+    """Required by pysyncobj"""
+    return SimpleEncryptor(password)
 
-class RSAEncryptor:
-    def __init__(self, priv, pubs, node, cert_dir, base):
-        self.priv, self.pubs, self.node = priv, pubs, node
-        self.cert_dir, self.base = cert_dir, base
-        self.last_check = 0
-        self.enabled = len(pubs) >= 2
+class SimpleEncryptor:
+    def __init__(self, password=None):
+        with open('pki_private_key.pem', 'rb') as f:
+            self.private_key = serialization.load_pem_private_key(
+                f.read(), 
+                password=None,
+                backend=default_backend()
+            )
+        self.public_keys = self._load_all_certificates()
+        self.enabled = len(self.public_keys) >= 2
+        print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
+    
+    def _load_all_certificates(self):
+        public_keys = {}
+        for cert_file in glob.glob('*_certificate.pem'):
+            try:
+                with open(cert_file, 'rb') as f:
+                    cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+                    pub_key = cert.public_key()
+                    if isinstance(pub_key, rsa.RSAPublicKey):
+                        public_keys[cert_file.replace('_certificate.pem', '')] = pub_key
+                    else:
+                        print(f"[SKIP] {cert_file}: Not RSA cert ({type(pub_key).__name__})")
+            except:
+                pass
+        return public_keys
     
     def _load_certificates(self):
-        if time.time() - self.last_check < 5:
-            return
-        self.last_check = time.time()
-        for d in [self.cert_dir, self.base]:
-            for cf in glob.glob(os.path.join(d, '*_certificate.pem')):
-                name = os.path.basename(cf).replace('_certificate.pem', '')
-                if name not in self.pubs:
-                    try:
-                        with open(cf, 'rb') as f:
-                            cert = x509.load_pem_x509_certificate(f.read(), default_backend())
-                            pub = cert.public_key()
-                            # Import RSA types
-                            from cryptography.hazmat.primitives.asymmetric import rsa
-                            # ONLY accept RSA keys
-                            if isinstance(pub, rsa.RSAPublicKey):
-                                self.pubs[name] = pub
-                            else:
-                                print(f"[SKIP] {name}: Not RSA cert ({type(pub).__name__})")
-                    except:
-                        pass
-        if len(self.pubs) >= 2 and not self.enabled:
-            self.enabled = True
+        """Refresh certificate list (called when new certificates arrive)"""
+        new_certs = self._load_all_certificates()
+        if len(new_certs) > len(self.public_keys):
+            print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
+            self.public_keys = new_certs
+            self.enabled = len(self.public_keys) >= 2
+            if self.enabled:
+                print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
     
     def encrypt_at_time(self, data, ts):
         try:
             print(f"\n[SEND] {len(data)}B")
             print(f"   {Fore.MAGENTA}{_display(data)}{Style.RESET_ALL}")
-            
-            self._load_certificates()
             if not self.enabled:
                 return struct.pack('!Q', ts) + data
-            
-            # LAYER 1: Fernet
-            fk = Fernet.generate_key()
-            fe = Fernet(fk).encrypt(data)
-            
-            # LAYER 2: RSA
-            result = struct.pack('!Q', ts) + struct.pack('!H', len(self.pubs))
-            for pub in self.pubs.values():
-                ek = pub.encrypt(fk, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), 
-                                                   algorithm=hashes.SHA256(), label=None))
-                result += struct.pack('!H', len(ek)) + ek
-            result += fe
-            
-            print(f"🔒 {Fore.RED}{result[:40].hex()}...{Style.RESET_ALL} ({len(result)}B)\n")
-            return result
+            fernet_key = Fernet.generate_key()
+            encrypted_data = Fernet(fernet_key).encrypt(data)
+            packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
+            for public_key in self.public_keys.values():
+                encrypted_key = public_key.encrypt(fernet_key, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+                packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
+            packet += encrypted_data
+            print(f"🔒 {Fore.RED}{packet[:40].hex()}...{Style.RESET_ALL} ({len(packet)}B)\n")
+            return packet
         except Exception as e:
             print(f"[ERROR] Encrypt: {e}")
             raise
     
-    def decrypt(self, data):
+    def decrypt(self, packet):
         try:
-            self._load_certificates()
-            if len(data) < 14:
-                return data[8:]
-            
+            if len(packet) < 14:
+                return packet[8:]
             try:
-                pc = struct.unpack('!H', data[8:10])[0]
-                if pc == 0 or pc > 100:
-                    return data[8:]
+                num_recipients = struct.unpack('!H', packet[8:10])[0]
+                if num_recipients == 0 or num_recipients > 100:
+                    return packet[8:]
             except:
-                return data[8:]
-            
-            print(f"\n[RECV] {len(data)}B")
-            print(f"   {Fore.RED}{data[:40].hex()}...{Style.RESET_ALL}")
-            
-            # Extract and decrypt Fernet key
-            offset, fk = 10, None
-            for _ in range(pc):
-                kl = struct.unpack('!H', data[offset:offset+2])[0]
+                return packet[8:]
+            print(f"\n[RECV] {len(packet)}B")
+            print(f"   {Fore.RED}{packet[:40].hex()}...{Style.RESET_ALL}")
+            offset, fernet_key = 10, None
+            for _ in range(num_recipients):
+                key_length = struct.unpack('!H', packet[offset:offset+2])[0]
                 offset += 2
-                ek = data[offset:offset+kl]
-                offset += kl
-                if not fk:
+                encrypted_key = packet[offset:offset+key_length]
+                offset += key_length
+                if fernet_key is None:
                     try:
-                        fk = self.priv.decrypt(ek, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), 
-                                                                 algorithm=hashes.SHA256(), label=None))
+                        fernet_key = self.private_key.decrypt(encrypted_key, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
                     except:
                         pass
-            
-            if not fk:
+            if fernet_key is None:
                 raise ValueError("Cannot decrypt key")
-            
-            # Decrypt data
-            pt = Fernet(fk).decrypt(data[offset:])
-            print(f"   {Fore.MAGENTA}{_display(pt)}{Style.RESET_ALL} ({len(pt)}B)\n")
-            return pt
+            decrypted_data = Fernet(fernet_key).decrypt(packet[offset:])
+            print(f"   {Fore.MAGENTA}{_display(decrypted_data)}{Style.RESET_ALL} ({len(decrypted_data)}B)\n")
+            return decrypted_data
         except Exception as e:
             print(f"[ERROR] Decrypt: {e}")
             raise
     
-    def extract_timestamp(self, data):
-        return struct.unpack('!Q', data[:8])[0]
+    def extract_timestamp(self, packet):
+        return struct.unpack('!Q', packet[:8])[0]
