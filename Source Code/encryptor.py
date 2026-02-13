@@ -13,7 +13,7 @@ HAS_CRYPTO = True
 def getEncryptor(password):
     return SimpleEncryptor(password)
 
-class SimpleEncryptor:
+class RSAEncryptor:
     def __init__(self, password=None):
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
