@@ -9,16 +9,8 @@ import struct, glob
 init(autoreset=True)
 HAS_CRYPTO = True
 
-def _display(data, n=100):
-    try:
-        import pickle, zlib
-        s = str(pickle.loads(zlib.decompress(data)))
-        return s if len(s) <= n else s[:n] + '...'
-    except:
-        return str(data[:80] if len(data) <= 80 else data[:80] + b'...')
-
+# Required by pysyncobj
 def getEncryptor(password):
-    """Required by pysyncobj"""
     return SimpleEncryptor(password)
 
 class SimpleEncryptor:
@@ -61,7 +53,6 @@ class SimpleEncryptor:
     def encrypt_at_time(self, data, ts):
         try:
             print(f"\n[SEND] {len(data)}B")
-            print(f"   {Fore.MAGENTA}{_display(data)}{Style.RESET_ALL}")
             if not self.enabled:
                 return struct.pack('!Q', ts) + data
             fernet_key = Fernet.generate_key()
@@ -103,7 +94,7 @@ class SimpleEncryptor:
             if fernet_key is None:
                 raise ValueError("Cannot decrypt key")
             decrypted_data = Fernet(fernet_key).decrypt(packet[offset:])
-            print(f"   {Fore.MAGENTA}{_display(decrypted_data)}{Style.RESET_ALL} ({len(decrypted_data)}B)\n")
+            print(f"   Decrypted {len(decrypted_data)}B\n")
             return decrypted_data
         except Exception as e:
             print(f"[ERROR] Decrypt: {e}")
