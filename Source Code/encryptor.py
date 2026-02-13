@@ -13,6 +13,7 @@ HAS_CRYPTO = True
 def getEncryptor(password):
     return SimpleEncryptor(password)
 
+# open private key pem file and load certificates
 class RSAEncryptor:
     def __init__(self, password=None):
         with open('pki_private_key.pem', 'rb') as f:
@@ -39,9 +40,9 @@ class RSAEncryptor:
             except:
                 pass
         return public_keys
-    
+        
+# Refresh certificate list (called when new certificates arrive)
     def _load_certificates(self):
-        """Refresh certificate list (called when new certificates arrive)"""
         new_certs = self._load_all_certificates()
         if len(new_certs) > len(self.public_keys):
             print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
@@ -49,7 +50,8 @@ class RSAEncryptor:
             self.enabled = len(self.public_keys) >= 2
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
-    
+
+# Encryption Instructions
     def encrypt_at_time(self, data, ts):
         try:
             print(f"\n[SEND] {len(data)}B")
@@ -67,7 +69,8 @@ class RSAEncryptor:
         except Exception as e:
             print(f"[ERROR] Encrypt: {e}")
             raise
-    
+            
+# Decryption Instructions
     def decrypt(self, packet):
         try:
             if len(packet) < 14:
