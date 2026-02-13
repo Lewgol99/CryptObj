@@ -7,15 +7,15 @@ from colorama import Fore, Style, init
 import struct, glob
 
 init(autoreset=True)
-HAS_CRYPTO = True
+HAS_CRYPTO = True  # Required by pysyncobj
 
 # Required by pysyncobj
 def getEncryptor(password):
-    return SimpleEncryptor(password)
+    return RSAEncryptor(password)  # Fixed to return correct class name
 
 # open private key pem file and load certificates
-class RSAEncryptor:
-    def __init__(self, password=None):
+class RSAEncryptor:  # Required by pysyncobj
+    def __init__(self, password=None):  # Required by pysyncobj
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
                 f.read(), 
@@ -52,7 +52,7 @@ class RSAEncryptor:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
 # Encryption Instructions
-    def encrypt_at_time(self, data, ts):
+    def encrypt_at_time(self, data, ts):  # Required by pysyncobj
         try:
             print(f"\n[SEND] {len(data)}B")
             if not self.enabled:
@@ -71,7 +71,7 @@ class RSAEncryptor:
             raise
             
 # Decryption Instructions
-    def decrypt(self, packet):
+    def decrypt(self, packet):  # Required by pysyncobj
         try:
             if len(packet) < 14:
                 return packet[8:]
@@ -103,5 +103,5 @@ class RSAEncryptor:
             print(f"[ERROR] Decrypt: {e}")
             raise
     
-    def extract_timestamp(self, packet):
+    def extract_timestamp(self, packet):  # Required by pysyncobj
         return struct.unpack('!Q', packet[:8])[0]
