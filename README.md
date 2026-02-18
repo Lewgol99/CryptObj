@@ -8,7 +8,7 @@ find . -mindepth 2 -type f -exec mv -t . {} +
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/0456aa76-656a-4631-aaca-005a5b2ff8fc" width="45%" />
-  <img src="https://github.com/user-attachments/assets/756075a8-1fb0-40c1-b6c1-247299cb1106"  width="45" />
+  <img src="https://github.com/user-attachments/assets/756075a8-1fb0-40c1-b6c1-247299cb1106" width="45%" />
 </p>
 
 
