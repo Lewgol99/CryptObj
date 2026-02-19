@@ -25,23 +25,6 @@ if __name__ == '__main__':
     status = get_ca_status()
     print(Fore.CYAN + f'CA Status: {status}')
 
-    if not os.path.exists('pki_private_key.pem'):
-        print(Fore.YELLOW + 'No private key found, generating...')
-        pki = PKI()
-        pki.generate_keys()
-        pki.generate_csr()
-        print(Fore.YELLOW + 'About to submit CSR to CA...')
-        result = submit_csr_to_ca(node_name)
-        print(Fore.YELLOW + f'CSR submission result: {result}')
-        if os.path.exists('certificate.pem'):
-            print(Fore.GREEN + 'Certificate file created successfully!')
-        else:
-            print(Fore.RED + 'Certificate file was NOT created!')
-
-    if not os.path.exists(f'{node_name}_certificate.pem'):
-        print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
-        exit(0)
-
     print(Fore.GREEN + f'Certificate Found — Starting PySyncObj!')
     os.environ['NODE_NAME'] = node_name
 
@@ -137,17 +120,29 @@ if __name__ == '__main__':
     print(f"  self  : {self_addr}")
     print(f"  peers : {partner_addrs}\n")
 
-    o = Raft(self_addr, partner_addrs, nodes, node_name)
-    memory_monitor.start_monitoring()
-    cpu_monitor.start_monitoring()
-
     with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
 
-    key_size = sys.argv[2]
-    if key_size not in rsa_keys:
+    key_size = int(sys.argv[2])
+    if key_size not in rsa_keys['key_sizes']:
         print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys.json')
         sys.exit(-1)
+
+    if not os.path.exists('pki_private_key.pem'):
+        print(Fore.YELLOW + 'No private key found, generating...')
+        pki = PKI()
+        pki.generate_keys(key_size)  # pass key size in
+        pki.generate_csr()
+        result = submit_csr_to_ca(node_name)
+
+    if not os.path.exists(f'{node_name}_certificate.pem'):
+        print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
+        exit(0)
+
+    
+    o = Raft(self_addr, partner_addrs, nodes, node_name)
+    memory_monitor.start_monitoring()
+    cpu_monitor.start_monitoring()
 
     n = 0
     old_value = -1
