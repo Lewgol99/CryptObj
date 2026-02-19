@@ -116,7 +116,8 @@ if __name__ == '__main__':
 
     def onAdd(res, err, cnt):
         status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
-        print(f"onAdd seq={cnt}  result={res}  {status}")
+        time.sleep(1) # use time lib to slow down system for visibility.
+        print(f"onAdd seq={cnt}  result={res}  {status}") 
 
     with open('nodes.json', 'r') as file:
         nodes = json.load(file)
