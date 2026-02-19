@@ -1,16 +1,25 @@
 from colorama import Fore
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+import json
 
 class Asymmetric_Keys:
     def __init__(self):
         self.private_key = None
 
-    def Generate_Private_key(self):
+    def Generate_Private_key(self, key_size):
         try:
+            with open('rsa_keys.json', 'r') as file: # load and read the json array
+                config = json.load(file)
+
+            key_sizes = config["key_sizes"] # get the list of RSA key sizes
+            print('Available Key Sizes', key_sizes) # show the user the optional RSA key sizes from the array
+            if key_size not in key_sizes:
+                raise ValueError(Fore.RED + 'Invalid RSA Key Size Selected') # add Value Error for incorrect key selection
+
             self.private_key = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=2048,
+            public_exponent=65537,
+            key_size=key_size, # take the key size from the user input
             )
             print(Fore.GREEN + 'Success: PKI Private Key Generation')
             return self.private_key
