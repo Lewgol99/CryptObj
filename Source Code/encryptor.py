@@ -5,6 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 from colorama import Fore, Style, init
 import struct, glob
+import time
 
 init(autoreset=True)
 HAS_CRYPTO = True  # Required by pysyncobj
@@ -56,10 +57,11 @@ class RSAEncryptor:  # Required by pysyncobj
         cls._raft_context = label
 
     def encrypt_at_time(self, data, ts):  # Required by pysyncobj
+        time.sleep(1)  # Use time lib to slow the system
         try:
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             if not self.enabled:
-                print(f"🔓 SEND {len(data):>5}B  [no encryption]{ctx}")
+                print(f"SEND {len(data):>5}B  [no encryption]{ctx}")
                 return struct.pack('!Q', ts) + data
 
             fernet_key = Fernet.generate_key()
@@ -74,7 +76,7 @@ class RSAEncryptor:  # Required by pysyncobj
             packet += encrypted_data
             
             hex_fp = packet[:20].hex()
-            print(f"🔒 SEND {len(data):>5}B → {len(packet):>5}B  "
+            print(f"SEND {len(data):>5}B → {len(packet):>5}B  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
             return packet
 
@@ -115,8 +117,9 @@ class RSAEncryptor:  # Required by pysyncobj
 
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             hex_fp = packet[:20].hex()
-            print(f"🔓 RECV {len(packet):>5}B → {len(decrypted_data):>5}B  "
+            print(f"RECV {len(packet):>5}B → {len(decrypted_data):>5}B  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
+            time.sleep(1) # use time lib to slow the system
             return decrypted_data
 
         except Exception as e:
