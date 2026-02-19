@@ -11,9 +11,8 @@ HAS_CRYPTO = True  # Required by pysyncobj
 
 # Required by pysyncobj
 def getEncryptor(password):
-    return RSAEncryptor(password)  # Fixed to return correct class name
+    return RSAEncryptor(password)
 
-# open private key pem file and load certificates
 class RSAEncryptor:  # Required by pysyncobj
     def __init__(self, password=None):  # Required by pysyncobj
         with open('pki_private_key.pem', 'rb') as f:
@@ -25,7 +24,7 @@ class RSAEncryptor:  # Required by pysyncobj
         self.public_keys = self._load_all_certificates()
         self.enabled = len(self.public_keys) >= 2
         print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
-    
+
     def _load_all_certificates(self):
         public_keys = {}
         for cert_file in glob.glob('*_certificate.pem'):
@@ -40,8 +39,7 @@ class RSAEncryptor:  # Required by pysyncobj
             except:
                 pass
         return public_keys
-        
-# Refresh certificate list (called when new certificates arrive)
+
     def _load_certificates(self):
         new_certs = self._load_all_certificates()
         if len(new_certs) > len(self.public_keys):
@@ -51,26 +49,39 @@ class RSAEncryptor:  # Required by pysyncobj
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
-# Encryption Instructions
+    _raft_context = ""
+
+    @classmethod
+    def set_context(cls, label: str):
+        cls._raft_context = label
+
     def encrypt_at_time(self, data, ts):  # Required by pysyncobj
         try:
-            print(f"\n[SEND] {len(data)}B")
+            ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             if not self.enabled:
+                print(f"🔓 SEND {len(data):>5}B  [no encryption]{ctx}")
                 return struct.pack('!Q', ts) + data
+
             fernet_key = Fernet.generate_key()
             encrypted_data = Fernet(fernet_key).encrypt(data)
             packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
             for public_key in self.public_keys.values():
-                encrypted_key = public_key.encrypt(fernet_key, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+                encrypted_key = public_key.encrypt(
+                    fernet_key,
+                    padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+                )
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
             packet += encrypted_data
-            print(f"🔒 {Fore.RED}{packet[:40].hex()}...{Style.RESET_ALL} ({len(packet)}B)\n")
+            
+            hex_fp = packet[:20].hex()
+            print(f"🔒 SEND {len(data):>5}B → {len(packet):>5}B  "
+                  f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
             return packet
+
         except Exception as e:
             print(f"[ERROR] Encrypt: {e}")
             raise
-            
-# Decryption Instructions
+
     def decrypt(self, packet):  # Required by pysyncobj
         try:
             if len(packet) < 14:
@@ -81,8 +92,7 @@ class RSAEncryptor:  # Required by pysyncobj
                     return packet[8:]
             except:
                 return packet[8:]
-            print(f"\n[RECV] {len(packet)}B")
-            print(f"   {Fore.RED}{packet[:40].hex()}...{Style.RESET_ALL}")
+
             offset, fernet_key = 10, None
             for _ in range(num_recipients):
                 key_length = struct.unpack('!H', packet[offset:offset+2])[0]
@@ -91,17 +101,27 @@ class RSAEncryptor:  # Required by pysyncobj
                 offset += key_length
                 if fernet_key is None:
                     try:
-                        fernet_key = self.private_key.decrypt(encrypted_key, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+                        fernet_key = self.private_key.decrypt(
+                            encrypted_key,
+                            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+                        )
                     except:
                         pass
+
             if fernet_key is None:
                 raise ValueError("Cannot decrypt key")
+
             decrypted_data = Fernet(fernet_key).decrypt(packet[offset:])
-            print(f"   Decrypted {len(decrypted_data)}B\n")
+
+            ctx = f"  ← {self._raft_context}" if self._raft_context else ""
+            hex_fp = packet[:20].hex()
+            print(f"🔓 RECV {len(packet):>5}B → {len(decrypted_data):>5}B  "
+                  f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
             return decrypted_data
+
         except Exception as e:
             print(f"[ERROR] Decrypt: {e}")
             raise
-    
+
     def extract_timestamp(self, packet):  # Required by pysyncobj
         return struct.unpack('!Q', packet[:8])[0]
