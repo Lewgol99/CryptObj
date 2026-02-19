@@ -82,8 +82,8 @@ if __name__ == '__main__':
 
             print(
                 f"\n  {'─'*54}\n"
-                f"  📋  RAFT LOG ENTRY  [{node_name}]  seq={cn}\n"
-                f"      addValue({value})  |  counter: {self.__counter - value} → "
+                f"RAFT LOG ENTRY  [{node_name}]  seq={cn}\n"
+                f"addValue({value})  |  counter: {self.__counter - value} → "
                 f"{Fore.GREEN}{self.__counter}{Style.RESET_ALL}\n"
                 f"  {'─'*54}"
             )
@@ -101,13 +101,12 @@ if __name__ == '__main__':
             
             if leader != self._last_leader:
                 if leader:
-                    # PySyncObj stores self address as _selfAddress
                     try:
                         self_addr = self._selfAddress
                     except AttributeError:
                         self_addr = None
                     is_me = (self_addr is not None and leader == self_addr)
-                    role_label = "THIS NODE 👑" if is_me else f"peer  (I am {self_addr or '?'})"
+                    role_label = "THIS NODE" if is_me else f"peer  (I am {self_addr or '?'})"
                     print(
                         f"\n  {'='*54}\n"
                         f"RAFT LEADER  →  {leader}  [{role_label}]\n"
