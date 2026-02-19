@@ -7,9 +7,9 @@ class PKI:
         self.keygen = None
         self.private_key = None 
 
-    def generate_keys(self):
+    def generate_keys(self, key_size):
         self.keygen = Asymmetric_Keys()
-        self.keygen.Generate_Private_key()
+        self.keygen.Generate_Private_key(key_size)
         self.keygen.Serialize_Private_key()
         self.private_key = self.keygen.private_key
         
