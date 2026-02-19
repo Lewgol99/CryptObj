@@ -46,7 +46,6 @@ if __name__ == '__main__':
     os.environ['NODE_NAME'] = node_name
 
     def _set_enc_ctx(label: str):
-        """Tag the encryptor so its one-liner shows the Raft operation name."""
         try:
             from encryptor import RSAEncryptor
             RSAEncryptor.set_context(label)
@@ -117,7 +116,7 @@ if __name__ == '__main__':
 
     def onAdd(res, err, cnt):
         status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
-        print(f"  ✔  onAdd seq={cnt}  result={res}  {status}")
+        print(f"onAdd seq={cnt}  result={res}  {status}")
 
     with open('nodes.json', 'r') as file:
         nodes = json.load(file)
