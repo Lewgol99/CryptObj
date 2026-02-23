@@ -23,7 +23,7 @@ class RSAEncryptor:  # Required by pysyncobj
                 backend=default_backend()
             )
         self.public_keys = self._load_all_certificates()
-        self.enabled = len(self.public_keys) >= 3
+        self.enabled = len(self.public_keys) >= 3 # change for the quantity of certificates
         print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
 
     def _load_all_certificates(self):
@@ -46,7 +46,7 @@ class RSAEncryptor:  # Required by pysyncobj
         if len(new_certs) > len(self.public_keys):
             print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
             self.public_keys = new_certs
-            self.enabled = len(self.public_keys) >= 3
+            self.enabled = len(self.public_keys) >= 3 # change for the quantity of certificates
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
