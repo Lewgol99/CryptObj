@@ -1,37 +1,49 @@
 import sys
-import time
-import json
-from colorama import Fore, Style
+import time 
+import json # import to use json data structures
+from colorama import Fore, Style # import colorama for colours
 from functools import partial
-from pysyncobj import SyncObj, replicated, SyncObjConf
+from pysyncobj import SyncObj, replicated, SyncObjConf # import the original pysyncobj system 
 import datetime
-from cpu_monitor import CPUMonitor
-from memory_monitor import MemoryMonitor
-from pki_setup import PKI
+from cpu_monitor import CPUMonitor # import our data collection file for CPU
+from memory_monitor import MemoryMonitor # import our data collectiojn file for memory
+from pki_setup import PKI # import our setup file
 import os
-from request import get_ca_status, submit_csr_to_ca
+from request import get_ca_status, submit_csr_to_ca # import from our server request file
+from encryptor import AsymmetricEncryptor # import from our encryptor file 
 
-memory_monitor = MemoryMonitor()
-cpu_monitor = CPUMonitor()
+memory_monitor = MemoryMonitor() # define our memory monitor file
+cpu_monitor = CPUMonitor() # define our CPU monitor file
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print('Usage: %s node_name key_size' % sys.argv[0])
-        print('Available nodes: node1, node2, node3, node4')
+    with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
+        nodes = json.load(file)
+
+    with open('rsa_keys.json', 'r') as file:  # open our RSA keys file to load a key
+        rsa_keys = json.load(file)
+
+    with open('ciphers.json', 'r') as file: # open our ciphers file to select a cipher
+        ciphers = json.load(file)
+
+    if len(sys.argv) < 4: # Define 4 system arguements at the terminal command line
+        print(Fore.YELLOW + f'Usage: {sys.argv[0]} node_name key_size cipher')
+        print(Fore.YELLOW + f'Available nodes: {list(nodes.keys())}')
+        print(Fore.YELLOW + f'Available key sizes: {rsa_keys["key_sizes"]}')
+        print(Fore.YELLOW + f'Available ciphers: {ciphers["ciphers"]}')
         sys.exit(-1)
 
-    node_name = sys.argv[1]
+    node_name = sys.argv[1] # Make the node name arguement 1
 
     status = get_ca_status()
-    print(Fore.CYAN + f'CA Status: {status}')
+    print(Fore.YELLOW + f'CA Status: {status}')
 
-    print(Fore.GREEN + f'Certificate Found — Starting PySyncObj!')
+    print(Fore.YELLOW + f'Certificate Found — Starting PySyncObj!')
     os.environ['NODE_NAME'] = node_name
 
     def _set_enc_ctx(label: str):
         try:
-            from encryptor import RSAEncryptor
-            RSAEncryptor.set_context(label)
+            from encryptor import AsymmetricEncryptor
+            AsymmetricEncryptor.set_context(label)
         except Exception:
             pass
 
@@ -102,9 +114,6 @@ if __name__ == '__main__':
         time.sleep(3) # use time lib to slow down system for visibility.
         print(f"onAdd seq={cnt}  result={res}  {status}") 
 
-    with open('nodes.json', 'r') as file:
-        nodes = json.load(file)
-
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
         sys.exit(-1)
@@ -120,13 +129,16 @@ if __name__ == '__main__':
     print(f"  self  : {self_addr}")
     print(f"  peers : {partner_addrs}\n")
 
-    with open('rsa_keys.json', 'r') as file:
-        rsa_keys = json.load(file)
-
-    key_size = int(sys.argv[2])
+    key_size = int(sys.argv[2]) # make Asymmetric Key Size terminal arguemnt 3
     if key_size not in rsa_keys['key_sizes']:
         print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys.json')
         sys.exit(-1)
+
+    selected_ciphers = sys.argv[3] # make Symmetric Cipher terminal arguement 4
+    if selected_ciphers not in ciphers['ciphers']:
+        print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
+        sys.exit(-1)
+    AsymmetricEncryptor.set_cipher(selected_ciphers) # call the ciphers
 
     if not os.path.exists('pki_private_key.pem'):
         print(Fore.YELLOW + 'No private key found, generating...')
@@ -138,7 +150,6 @@ if __name__ == '__main__':
     if not os.path.exists(f'{node_name}_certificate.pem'):
         print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
         exit(0)
-
     
     o = Raft(self_addr, partner_addrs, nodes, node_name)
     memory_monitor.start_monitoring()
