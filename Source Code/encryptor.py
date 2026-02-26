@@ -1,4 +1,4 @@
-from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
@@ -6,16 +6,69 @@ from cryptography import x509
 from colorama import Fore, Style, init
 import struct, glob
 import time
+import os
+import json
+from base64 import b64encode
+from Crypto.Cipher import AES
+from Crypto.Cipher import ChaCha20
+from Crypto.Cipher import Salsa20
+from Crypto.Random import get_random_bytes
 
 init(autoreset=True)
 HAS_CRYPTO = True  # Required by pysyncobj
 
 # Required by pysyncobj
 def getEncryptor(password):
-    return RSAEncryptor(password)
+    return AsymmetricEncryptor(password)
 
-class RSAEncryptor:  # Required by pysyncobj
-    def __init__(self, password=None):  # Required by pysyncobj
+class SymmetricEncryptor:
+    _cipher = None
+
+    @classmethod
+    def set_cipher(cls, cipher_name: str):
+        cls._cipher = cipher_name
+
+    def __init__(self, cipher_name, key, data):
+        pass
+    
+    def symmetric_encrypt(self, key, data):
+        if self._cipher == 'AES':
+            cipher = AES.new(key, AES.MODE_EAX)
+            ciphertext, tag = cipher.encrypt_and_digest(data)
+            return cipher.nonce + tag + ciphertext
+        
+        elif self._cipher == 'ChaCha20':
+            cipher = ChaCha20.new(key=key)
+            ciphertext = cipher.encrypt(data)
+            return cipher.nonce + ciphertext
+        
+        elif self._cipher == 'Salsa20':
+            cipher = Salsa20.new(key=key)
+            msg = cipher.nonce + cipher.encrypt(data)
+            return msg
+
+    
+    def symmetric_decrypt(self, key, data):
+        if self._cipher == 'AES':
+            nonce, tag, ciphertext = data[:16], data[16:32], data[32:]
+            cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
+            return cipher.decrypt_and_verify(ciphertext, tag)
+        
+        elif self._cipher == 'ChaCha20':
+            nonce, ciphertext = data[:8], data[8:]
+            cipher = ChaCha20.new(key=key, nonce=nonce)
+            return cipher.decrypt(ciphertext) 
+        
+        elif self._cipher == 'Salsa20':
+            nonce, ciphertext = data[:8], data[8:]
+            cipher = Salsa20.new(key=key, nonce=nonce)
+            return cipher.decrypt(ciphertext)
+
+
+class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
+    def __init__(self, password=None): 
+        super().__init__(self._cipher, None, None)
+        
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
                 f.read(), 
@@ -64,12 +117,12 @@ class RSAEncryptor:  # Required by pysyncobj
                 print(f"SEND {len(data):>5}B  [no encryption]{ctx}")
                 return struct.pack('!Q', ts) + data
 
-            fernet_key = Fernet.generate_key()
-            encrypted_data = Fernet(fernet_key).encrypt(data)
+            sym_key = os.urandom(32)
+            encrypted_data = self.symmetric_encrypt(sym_key, data)
             packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
             for public_key in self.public_keys.values():
                 encrypted_key = public_key.encrypt(
-                    fernet_key,
+                    sym_key,
                     padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
                 )
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
@@ -95,25 +148,25 @@ class RSAEncryptor:  # Required by pysyncobj
             except:
                 return packet[8:]
 
-            offset, fernet_key = 10, None
+            offset, sym_key = 10, None
             for _ in range(num_recipients):
                 key_length = struct.unpack('!H', packet[offset:offset+2])[0]
                 offset += 2
                 encrypted_key = packet[offset:offset+key_length]
                 offset += key_length
-                if fernet_key is None:
+                if sym_key is None:
                     try:
-                        fernet_key = self.private_key.decrypt(
+                        sym_key = self.private_key.decrypt(
                             encrypted_key,
                             padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
                         )
                     except:
                         pass
 
-            if fernet_key is None:
+            if sym_key is None:
                 raise ValueError("Cannot decrypt key")
 
-            decrypted_data = Fernet(fernet_key).decrypt(packet[offset:])
+            decrypted_data = self.symmetric_decrypt(sym_key, packet[offset:])
 
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             hex_fp = packet[:20].hex()
