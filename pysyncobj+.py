@@ -138,6 +138,7 @@ if __name__ == '__main__':
     if selected_ciphers not in ciphers['ciphers']:
         print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
         sys.exit(-1)
+    os.environ['SELECTED_CIPHER'] = selected_ciphers 
     AsymmetricEncryptor.set_cipher(selected_ciphers) # call the ciphers
 
     if not os.path.exists('pki_private_key.pem'):
