@@ -16,6 +16,7 @@ memory_monitor = MemoryMonitor() # define our memory monitor file
 cpu_monitor = CPUMonitor() # define our CPU monitor file
 
 if __name__ == '__main__':
+    
     with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
         nodes = json.load(file)
 
