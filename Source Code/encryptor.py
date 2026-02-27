@@ -1,4 +1,3 @@
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
@@ -7,19 +6,20 @@ from colorama import Fore, Style, init
 import struct, glob
 import time
 import os
-import json
-from base64 import b64encode
 from Crypto.Cipher import AES
 from Crypto.Cipher import ChaCha20
 from Crypto.Cipher import Salsa20
-from Crypto.Random import get_random_bytes
 
 init(autoreset=True)
 HAS_CRYPTO = True  # Required by pysyncobj
 
+
 # Required by pysyncobj
 def getEncryptor(password):
+    cipher = os.environ.get('SELECTED_CIPHER', 'AES')
+    AsymmetricEncryptor.set_cipher(cipher)
     return AsymmetricEncryptor(password)
+
 
 class SymmetricEncryptor:
     _cipher = None
@@ -28,37 +28,36 @@ class SymmetricEncryptor:
     def set_cipher(cls, cipher_name: str):
         cls._cipher = cipher_name
 
-    def __init__(self, cipher_name, key, data):
+    def __init__(self):
         pass
-    
+
     def symmetric_encrypt(self, key, data):
         if self._cipher == 'AES':
             cipher = AES.new(key, AES.MODE_EAX)
             ciphertext, tag = cipher.encrypt_and_digest(data)
             return cipher.nonce + tag + ciphertext
-        
+
         elif self._cipher == 'ChaCha20':
             cipher = ChaCha20.new(key=key)
             ciphertext = cipher.encrypt(data)
             return cipher.nonce + ciphertext
-        
+
         elif self._cipher == 'Salsa20':
             cipher = Salsa20.new(key=key)
-            msg = cipher.nonce + cipher.encrypt(data)
-            return msg
+            ciphertext = cipher.encrypt(data)
+            return cipher.nonce + ciphertext
 
-    
     def symmetric_decrypt(self, key, data):
         if self._cipher == 'AES':
             nonce, tag, ciphertext = data[:16], data[16:32], data[32:]
             cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
             return cipher.decrypt_and_verify(ciphertext, tag)
-        
+
         elif self._cipher == 'ChaCha20':
             nonce, ciphertext = data[:8], data[8:]
             cipher = ChaCha20.new(key=key, nonce=nonce)
-            return cipher.decrypt(ciphertext) 
-        
+            return cipher.decrypt(ciphertext)
+
         elif self._cipher == 'Salsa20':
             nonce, ciphertext = data[:8], data[8:]
             cipher = Salsa20.new(key=key, nonce=nonce)
@@ -66,17 +65,17 @@ class SymmetricEncryptor:
 
 
 class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
-    def __init__(self, password=None): 
-        super().__init__(self._cipher, None, None)
-        
+    def __init__(self, password=None):
+        super().__init__()
+
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
-                f.read(), 
+                f.read(),
                 password=None,
                 backend=default_backend()
             )
         self.public_keys = self._load_all_certificates()
-        self.enabled = len(self.public_keys) >= 3 # change for the quantity of certificates
+        self.enabled = len(self.public_keys) >= 3
         print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
 
     def _load_all_certificates(self):
@@ -99,7 +98,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
         if len(new_certs) > len(self.public_keys):
             print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
             self.public_keys = new_certs
-            self.enabled = len(self.public_keys) >= 3 # change for the quantity of certificates
+            self.enabled = len(self.public_keys) >= 3
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
@@ -110,7 +109,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
         cls._raft_context = label
 
     def encrypt_at_time(self, data, ts):  # Required by pysyncobj
-        time.sleep(1)  # Use time lib to slow the system
+        time.sleep(1)
         try:
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             if not self.enabled:
@@ -127,7 +126,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 )
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
             packet += encrypted_data
-            
+
             hex_fp = packet[:20].hex()
             print(f"SEND {len(data):>5}B → {len(packet):>5}B  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
@@ -172,7 +171,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             hex_fp = packet[:20].hex()
             print(f"RECV {len(packet):>5}B → {len(decrypted_data):>5}B  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
-            time.sleep(1) # use time lib to slow the system
+            time.sleep(1)
             return decrypted_data
 
         except Exception as e:
