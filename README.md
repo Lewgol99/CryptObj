@@ -6,8 +6,6 @@ find . -mindepth 2 -type f -exec mv -t . {} +
 
 rm -rf *.pem
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/756075a8-1fb0-40c1-b6c1-247299cb1106" width="45%" />
-</p>
+<img width="325" height="307" alt="image" src="https://github.com/user-attachments/assets/bd1892b2-9b9a-4ae8-95cd-e35c164b0e5f" />
 
 
