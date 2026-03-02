@@ -5,7 +5,7 @@ class LatencyMonitor:
     _instance = None
     _results_list = []  # Static list to store all measurements
     
-    def __init__(self, max_measurements=10):
+    def __init__(self, max_measurements=1000):
         self.start = None
         self.stop = None 
         self.max_measurements = max_measurements
@@ -18,15 +18,15 @@ class LatencyMonitor:
     
 # Create a function to stop the timer using the time() method 
 
-    def stop_latency(self):
+    def stop_latency(self, label=None):
         self.stop = time.time()
-        latency = (self.stop - self.start) * 1000 # Use * 1000 to generate the results in milliseconds 
+        latency = (self.stop - self.start) 
         measurement = len(LatencyMonitor._results_list) + 1
         LatencyMonitor._results_list.append({
             'measurement': measurement,  # Added measurement number
             'latency': latency
         })
-        print(f"Measurement {measurement}: {latency:.3f} milliseconds")
+        print(f"Measurement {measurement}: {latency:.6f} seconds")
         self.save_file('latency_measurements')
         return self.stop
     
