@@ -3,9 +3,14 @@
 The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric Encryption into the protocol for secure consensus in distributed systems. This validates NIST security properties for information security and can be used as a network protocol for security applications.  
 
 
-<div style="display: flex; justify-content: space-between;">
-  <img src="https://github.com/user-attachments/assets/17820333-84b6-4224-9f9d-a243a45e4335" width="45%" />
-  <img src="https://github.com/user-attachments/assets/b618a53f-cf83-4e94-8082-6fa1ac63c4a6" width="45%" />
+<div style="display: flex; gap: 20px; align-items: center;">
+  <img src="https://github.com/user-attachments/assets/17820333-84b6-4224-9f9d-a243a45e4335" 
+       alt="Image 1" 
+       width="300">
+
+  <img src="https://github.com/user-attachments/assets/b618a53f-cf83-4e94-8082-6fa1ac63c4a6" 
+       alt="Image 2" 
+       width="700">
 </div>
 
 
