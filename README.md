@@ -1,5 +1,7 @@
 ## PySyncObj+
 
+The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric Encryption into the protocol for secure consensus in distributed systems. 
+
 <img width="334" height="327" alt="image" src="https://github.com/user-attachments/assets/17820333-84b6-4224-9f9d-a243a45e4335" />
 
 ## License
