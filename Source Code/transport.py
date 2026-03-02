@@ -329,20 +329,6 @@ class TCPTransport(Transport):
         conn.setOnDisconnectedCallback(functools.partial(self._onDisconnected, conn))
 
     def _onIncomingMessageReceived(self, conn, message):
-        """
-        Callback for initial messages on incoming connections.
-        
-        FOR PURE RSA:
-        - First message is UNENCRYPTED handshake with certificate
-        - We save the peer's certificate
-        - We send our certificate back (UNENCRYPTED)
-        - After handshake, all messages are RSA ENCRYPTED
-        
-        :param conn: connection object
-        :type conn: TcpConnection
-        :param message: received message
-        :type message: any
-        """
 
         # Utility messages
         if isinstance(message, list) and self._onUtilityMessage(conn, message):
@@ -359,14 +345,14 @@ class TCPTransport(Transport):
                 try:
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
                         f.write(peer_cert)
-                    print(f"✅ [INCOMING] Received and saved certificate from {peer_node_name}")
+                    print(Fore.YELLOW + f"[INCOMING] Received and saved certificate from {peer_node_name}")
                     
                     # CRITICAL: Reload certificates in encryptor
                     if self._syncObj.encryptor:
                         self._syncObj.encryptor._load_certificates()
                         
                 except Exception as e:
-                    print(f"❌ [INCOMING] Failed to save certificate from {peer_node_name}: {e}")
+                    print(Fore.YELLOW + f"[INCOMING] Failed to save certificate from {peer_node_name}: {e}")
             
             # Send our certificate back (UNENCRYPTED handshake response)
             self._sendSelfAddress(conn)
@@ -466,7 +452,6 @@ class TCPTransport(Transport):
         """
         Send handshake with this node's certificate.
         THIS MESSAGE IS SENT UNENCRYPTED to enable certificate exchange.
-        
         :param conn: connection object
         :type conn: TcpConnection
         """
@@ -482,7 +467,7 @@ class TCPTransport(Transport):
                 with open('certificate.pem', 'r') as f:
                     our_cert = f.read()
         except FileNotFoundError:
-            print(f"⚠️  Warning: Certificate file not found for {node_name}")
+            print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
             pass  # Certificate doesn't exist yet
         
         # Send handshake message (UNENCRYPTED)
@@ -495,13 +480,11 @@ class TCPTransport(Transport):
         """
         Callback for when a new connection from this to another node is established.
         
-        FOR PURE RSA ENCRYPTION:
+        RSA ENCRYPTION:
         1. Send handshake UNENCRYPTED (with our certificate)
         2. Wait for handshake response UNENCRYPTED (with peer's certificate)
         3. Save peer's certificate to disk
         4. Enable RSA encryption for all subsequent messages
-        
-        NO SYMMETRIC KEY EXCHANGE - PURE RSA ONLY
         
         :param conn: connection object
         :type conn: TcpConnection
@@ -537,16 +520,16 @@ class TCPTransport(Transport):
                     # Save peer's certificate
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
                         f.write(peer_cert)
-                    print(f"✅ [OUTGOING] Received and saved certificate from {peer_node_name}")
+                    print(Fore.YELLOW + f"[OUTGOING] Received and saved certificate from {peer_node_name}")
                     
                     # CRITICAL: Tell encryptor to reload certificates
                     if self._syncObj.encryptor:
                         self._syncObj.encryptor._load_certificates()
                         
                 except Exception as e:
-                    print(f"❌ [OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
+                    print(Fore.YELLOW + f"[OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
             else:
-                print(f"⚠️  [OUTGOING] Handshake missing certificate or node_name")
+                print(Fore.YELLOW + f"[OUTGOING] Handshake missing certificate or node_name")
         
         # Now switch to normal (ENCRYPTED) message handling
         node = self._connToNode(conn)
