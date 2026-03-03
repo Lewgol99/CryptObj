@@ -2,38 +2,33 @@ import time
 import pandas
 
 class LatencyMonitor:
-    _instance = None
-    _results_list = []  # Static list to store all measurements
-    
-    def __init__(self, max_measurements=1000):
+    _results_list = []  # Static list shared across all instances
+
+    def __init__(self, max_measurements=10):
         self.start = None
-        self.stop = None 
+        self.stop = None
         self.max_measurements = max_measurements
 
-# Create a function to start the timer using the time() method 
-    
     def start_latency(self):
-        self.start = time.time()
+        self.start = time.perf_counter()  # perf_counter is far more precise than time.time()
         return self.start
-    
-# Create a function to stop the timer using the time() method 
 
-    def stop_latency(self, label=None):
-        self.stop = time.time()
-        latency = (self.stop - self.start) 
+    def stop_latency(self, label=''):
+        self.stop = time.perf_counter()
+        latency = (self.stop - self.start) * 1000  # convert to milliseconds
         measurement = len(LatencyMonitor._results_list) + 1
-        LatencyMonitor._results_list.append({
-            'measurement': measurement,  # Added measurement number
-            'latency': latency
-        })
-        print(f"Measurement {measurement}: {latency:.3f} milliseconds")
-        self.save_file('latency_measurements')
-        return self.stop
-    
-# Create a function to save the generated results to a csv file with an iteration and results coloumn 
 
-    def save_file(self, node_id):
-       if LatencyMonitor._results_list:
-        df = pandas.DataFrame(LatencyMonitor._results_list)
-        df.to_csv(f'{node_id}.csv', index=False)
-        return
+        LatencyMonitor._results_list.append({
+            'measurement': measurement,
+            'label': label,
+            'latency_ms': round(latency, 6)
+        })
+
+        print(f"Measurement {measurement} [{label}]: {latency:.6f} ms")
+        self.save_file('latency_measurements')
+        return latency
+
+    def save_file(self, filename):
+        if LatencyMonitor._results_list:
+            df = pandas.DataFrame(LatencyMonitor._results_list)
+            df.to_csv(f'{filename}.csv', index=False)
