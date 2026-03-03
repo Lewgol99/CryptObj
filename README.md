@@ -23,6 +23,9 @@ Remember to remove any existing certificate files or key files.
 rm -rf *.pem
 
 
+lftp -u Lewgol99 -e "set ssl:verify-certificate no; set ftp:ssl-protect-data true; set ftp:ssl-force true" 192.168.0.17 put latency_measurements.csv
+
+
 ## Publications
 
 ## License
