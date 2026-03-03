@@ -26,7 +26,7 @@ class LatencyMonitor:
             'measurement': measurement,  # Added measurement number
             'latency': latency
         })
-        print(f"Measurement {measurement}: {latency:.6f} seconds")
+        print(f"Measurement {measurement}: {latency:.3f} milliseconds")
         self.save_file('latency_measurements')
         return self.stop
     
