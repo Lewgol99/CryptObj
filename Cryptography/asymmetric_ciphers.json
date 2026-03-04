@@ -1,1 +1,3 @@
-
+{
+    "ciphers": ["RSA", "ECC"]
+}
