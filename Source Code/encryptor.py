@@ -119,6 +119,8 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 print(f"SEND {len(data):>5}B  [no encryption]{ctx}")
                 return struct.pack('!Q', ts) + data
 
+            print(Fore.YELLOW + f'Pre-Encryption Bytes Size: {len(data)} bytes') # show how many bytes are being encrypted 
+
             sym_key = os.urandom(32)
             encrypted_data = self.symmetric_encrypt(sym_key, data)
             packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
@@ -151,6 +153,9 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                     return packet[8:]
             except:
                 return packet[8:]
+
+            
+            print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes') # show how many bytes are being decrypted
 
             offset, sym_key = 10, None
             for _ in range(num_recipients):
