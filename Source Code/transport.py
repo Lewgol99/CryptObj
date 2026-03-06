@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import random
+from digital_signature import DigitalSignature
 from colorama import Fore
 
 class TransportNotReadyError(Exception):
@@ -199,6 +200,8 @@ class TCPTransport(Transport):
         """
 
         super(TCPTransport, self).__init__(syncObj, selfNode, otherNodes)
+        self.signer = DigitalSignature() # for digital signature
+        self.signer.Load_Private_Key() # for digital signature
         self._syncObj = syncObj
         self._server = None
         self._connections = {} # Node object -> TcpConnection object
@@ -339,6 +342,16 @@ class TCPTransport(Transport):
             peer_node_name = message.get('node_name')
             peer_cert = message.get('certificate')
             peer_address = message.get('address')
+
+            if peer_cert and peer_node_name:
+                signature = message.get('signature')
+                signing_key_pem = message.get('signing_public_key')
+                peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                if not self.signer.validate(peer_public_key, peer_node_name.encode(), signature):
+                    print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
+                    conn.disconnect()
+                    return
+                print(Fore.GREEN + f'Success: {peer_node_name} Authenticated!')
             
             # Save peer's certificate
             if peer_cert and peer_node_name:
@@ -457,8 +470,18 @@ class TCPTransport(Transport):
         """
         node_name = getattr(self._syncObj.conf, 'node_name', None)
         our_cert = None
+        signing_public_key = None
+
+        # try to read the signing key
+
+        try:
+            with open('signing_public_key.pem', 'r') as file:
+                signing_public_key = file.read()
+        except FileNotFoundError:
+            signing_public_key = None
         
         # Try to read our certificate
+
         try:
             if node_name:
                 with open(f'{node_name}_certificate.pem', 'r') as f:
@@ -468,13 +491,13 @@ class TCPTransport(Transport):
                     our_cert = f.read()
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
-            pass  # Certificate doesn't exist yet
+        signature = self.signer.sign(node_name.encode())
         
         # Send handshake message (UNENCRYPTED)
         if self._selfIsReadonlyNode:
-            conn.send({'type': 'handshake', 'node_name': node_name, 'address': 'readonly', 'certificate': our_cert})
+            conn.send({'type': 'handshake', 'node_name': node_name, 'address': 'readonly', 'certificate': our_cert, 'signature': signature, 'signing_public_key': signing_public_key})
         else:
-            conn.send({'type': 'handshake', 'node_name': node_name, 'address': self._selfNode.address, 'certificate': our_cert})
+            conn.send({'type': 'handshake', 'node_name': node_name, 'address': self._selfNode.address, 'certificate': our_cert, 'signature': signature, 'signing_public_key': signing_public_key})
 
     def _onOutgoingConnected(self, conn):
         """
@@ -497,6 +520,7 @@ class TCPTransport(Transport):
         self._sendSelfAddress(conn)
 
     def _onOutgoingHandshakeResponse(self, conn, message):
+
         """
         Callback for receiving handshake response on outgoing connections.
         This processes the peer's certificate before switching to normal message handling.
@@ -514,8 +538,18 @@ class TCPTransport(Transport):
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
             peer_cert = message.get('certificate')
+            signature = message.get('signature')
+    
             
-            if peer_cert and peer_node_name:
+            if peer_cert and peer_node_name and signature:
+                signing_key_pem = message.get('signing_public_key')
+                peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                if not self.signer.validate(peer_public_key, peer_node_name.encode(), signature):
+                    print(Fore.RED + f'Error: {peer_node_name} digital signature rejected and failed authentication!')
+                    conn.disconnect()
+                    return
+                print(Fore.GREEN + f'Success: {peer_node_name} Digital Signature Authenticated!')
+
                 try:
                     # Save peer's certificate
                     with open(f'{peer_node_name}_certificate.pem', 'w') as f:
