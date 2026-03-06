@@ -8,6 +8,7 @@ from cryptography.hazmat.backends import default_backend
 import json
 from asymmetric_keys import Asymmetric_Keys
 
+
 class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheritence
     def __init__(self):
         super().__init__() # use for inheritence
@@ -44,15 +45,15 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
             return None
         
 
-    def load_public_key_from_cert(self, cert_pem):
+    def load_public_key_from_pem(self, public_key_pem: str):
         try:
-            cert = x509.load_pem_x509_certificate(
-                cert_pem.encode(),
-                default_backend()
+            public_key = serialization.load_pem_public_key(
+                public_key_pem.encode(),
+                backend=default_backend()
             )
-            return cert.public_key()
+            return public_key
         except Exception as e:
-            print(Fore.RED + f'Error: Failed to Load Digital Signature Public Key from Certificate!')
+            print(Fore.RED + f'Error: Failed to Load Digital Signature Public Key!')
             return None
 
 
