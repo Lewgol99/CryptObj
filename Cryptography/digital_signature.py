@@ -7,10 +7,11 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend     
 import json
 from asymmetric_keys import Asymmetric_Keys
-
+from ds_latency_monitor import DSLatencyMonitor
 
 class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheritence
     def __init__(self):
+        self.latency_monitor = DSLatencyMonitor()
         super().__init__() # use for inheritence
 
     def generate_Private_Key(self, key_size):
@@ -74,6 +75,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
 
     def sign(self, message):
         try:
+            self.latency_monitor.start_latency()
             signature = self.private_key.sign(
                 message,
                 padding.PSS(
@@ -82,6 +84,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
                 ),
                 hashes.SHA256()
             )
+            self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
             return signature
         except Exception as e:
@@ -90,6 +93,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
 
     def validate(self, public_key, message, signature):
         try:
+            self.latency_monitor.start_latency()
             public_key.verify(
                 signature,
                 message,
@@ -99,6 +103,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
                 ),
                 hashes.SHA256()
             )
+            self.latency_monitor.stop_latency('verify')
             print(Fore.GREEN + f'Success: Signature Verified!')
             return True
         except Exception as e:
