@@ -16,9 +16,9 @@ class DSLatencyMonitor:
     def stop_latency(self, label=''):
         self.stop = time.perf_counter()
         latency = (self.stop - self.start) * 1000  # convert to milliseconds
-        measurement = len(LatencyMonitor._results_list) + 1
+        measurement = len(DSLatencyMonitor._results_list) + 1
 
-        LatencyMonitor._results_list.append({
+        DSLatencyMonitor._results_list.append({
             'measurement': measurement,
             'label': label,
             'latency_ms': round(latency, 6)
@@ -29,6 +29,6 @@ class DSLatencyMonitor:
         return latency
 
     def save_file(self, filename):
-        if LatencyMonitor._results_list:
+        if DSLatencyMonitor._results_list:
             df = pandas.DataFrame(LatencyMonitor._results_list)
             df.to_csv(f'{filename}.csv', index=False)
