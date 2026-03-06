@@ -30,5 +30,5 @@ class DSLatencyMonitor:
 
     def save_file(self, filename):
         if DSLatencyMonitor._results_list:
-            df = pandas.DataFrame(LatencyMonitor._results_list)
+            df = pandas.DataFrame(DSLatencyMonitor._results_list)
             df.to_csv(f'{filename}.csv', index=False)
