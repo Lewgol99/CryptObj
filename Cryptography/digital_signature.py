@@ -2,10 +2,11 @@ from colorama import Fore
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization 
 from cryptography.hazmat.primitives.asymmetric import padding  
-from cryptography.hazmat.primitives import hashes              
+from cryptography.hazmat.primitives import hashes       
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend     
 import json
 from asymmetric_keys import Asymmetric_Keys
-
 
 class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheritence
     def __init__(self):
@@ -29,6 +30,31 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
         except Exception as e:
                 print(Fore.RED + f'Error: Signing Private Key Failed!')
                 return None
+
+    def Load_Private_Key(self):
+        try:
+            with open('signing_private_key.pem', 'rb') as file:
+                self.private_key = serialization.load_pem_private_key(
+                    file.read(),
+                    password=None
+                )
+            return self.private_key
+        except Exception as e:
+            print(Fore.RED + f'Error: Failed to Load Signing Private Key!')
+            return None
+        
+
+    def load_public_key_from_cert(self, cert_pem):
+        try:
+            cert = x509.load_pem_x509_certificate(
+                cert_pem.encode(),
+                default_backend()
+            )
+            return cert.public_key()
+        except Exception as e:
+            print(Fore.RED + f'Error: Failed to Load Digital Signature Public Key from Certificate!')
+            return None
+
 
     def serialize_Public_key(self):
         try:
