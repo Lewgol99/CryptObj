@@ -347,7 +347,7 @@ class TCPTransport(Transport):
                 signature = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                if not self.signer.validate(peer_public_key, peer_node_name.encode(), signature):
+                if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
                     print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
                     conn.disconnect()
                     return
@@ -491,7 +491,7 @@ class TCPTransport(Transport):
                     our_cert = f.read()
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
-        signature = self.signer.sign(node_name.encode())
+        signature = self.signer.sign(our_cert.encode())
         
         # Send handshake message (UNENCRYPTED)
         if self._selfIsReadonlyNode:
@@ -544,7 +544,7 @@ class TCPTransport(Transport):
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                if not self.signer.validate(peer_public_key, peer_node_name.encode(), signature):
+                if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
                     print(Fore.RED + f'Error: {peer_node_name} digital signature rejected and failed authentication!')
                     conn.disconnect()
                     return
