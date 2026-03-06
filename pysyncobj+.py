@@ -11,6 +11,7 @@ from pki_setup import PKI # import our setup file
 import os
 from request import get_ca_status, submit_csr_to_ca # import from our server request file
 from encryptor import AsymmetricEncryptor # import from our encryptor file 
+from digital_signature import DigitalSignature # import digital signature
 
 memory_monitor = MemoryMonitor() # define our memory monitor file
 cpu_monitor = CPUMonitor() # define our CPU monitor file
@@ -149,10 +150,18 @@ if __name__ == '__main__':
         pki.generate_csr()
         result = submit_csr_to_ca(node_name)
 
+    if not os.path.exists('signing_private_key.pem'):
+        print(Fore.YELLOW + 'No signing key found, generating...')
+        signer = DigitalSignature()
+        signer.generate_Private_Key(key_size)
+        signer.serialize_Private_key()
+        signer.serialize_Public_key()
+        print(Fore.GREEN + 'Signing keys generated!')
+
     if not os.path.exists(f'{node_name}_certificate.pem'):
         print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
         exit(0)
-    
+
     o = Raft(self_addr, partner_addrs, nodes, node_name)
     memory_monitor.start_monitoring()
     cpu_monitor.start_monitoring()
