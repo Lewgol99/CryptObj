@@ -8,10 +8,12 @@ from cryptography.hazmat.backends import default_backend
 import json
 from asymmetric_keys import Asymmetric_Keys
 from ds_latency_monitor import DSLatencyMonitor
+from ds_throughput_monitor import DSThroughputMonitor
 
 class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheritence
     def __init__(self):
         self.latency_monitor = DSLatencyMonitor()
+        self.throughput_monitor = DSThroughputMonitor()
         super().__init__() # use for inheritence
 
     def generate_Private_Key(self, key_size):
@@ -75,6 +77,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
 
     def sign(self, message):
         try:
+            self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             signature = self.private_key.sign(
                 message,
@@ -84,6 +87,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
                 ),
                 hashes.SHA256()
             )
+            self.throughput_monitor.stop_throughput(len(message),'sign')
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
             return signature
@@ -93,6 +97,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
 
     def validate(self, public_key, message, signature):
         try:
+            self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             public_key.verify(
                 signature,
@@ -103,6 +108,7 @@ class DigitalSignature(Asymmetric_Keys): # use asymmetric_keys script for inheri
                 ),
                 hashes.SHA256()
             )
+            self.throughput_monitor.stop_throughput(len(message), 'verify')
             self.latency_monitor.stop_latency('verify')
             print(Fore.GREEN + f'Success: Signature Verified!')
             return True
