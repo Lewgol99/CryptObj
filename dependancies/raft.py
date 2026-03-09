@@ -32,6 +32,7 @@ def install_dependencies():
         subprocess.run(["pip", "install", "colorama"])  # Install colorama library
         subprocess.run(["pip3", "install", "pandas"])  # Install psutil library
         subprocess.run(["pip3", "install", "cryptography"])  # Install cryptography library
+        subprocess.run(["pip3", "install", "flask"])  # Install flask library
         print("Dependencies installed successfully.")
     except Exception as e:
         print(f"Error installing dependencies: {e}")
