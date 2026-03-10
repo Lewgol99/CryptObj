@@ -192,8 +192,6 @@ if __name__ == '__main__':
         exit(0)
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
-    memory_monitor.start_monitoring()
-    cpu_monitor.start_monitoring()
 
     n = 0
     old_value = -1
