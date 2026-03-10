@@ -1,4 +1,5 @@
 from asymmetric_keys import Asymmetric_Keys
+from ecc_keys import ECC_Keys
 from csr import CertificateSigningRequest
 from colorama import Fore
 
@@ -11,6 +12,13 @@ class PKI:
         self.keygen = Asymmetric_Keys()
         self.keygen.Generate_Private_key(key_size)
         self.keygen.Serialize_Private_key()
+        self.private_key = self.keygen.private_key
+
+    def generate_ecc_keys(self, curve_name):
+        self.keygen = ECC_Keys()
+        self.keygen.Generate_Private_Key(curve_name)
+        self.keygen.Serialize_Private_Key()
+        self.keygen.Serialize_Public_Key()
         self.private_key = self.keygen.private_key
         
     def generate_csr(self):
