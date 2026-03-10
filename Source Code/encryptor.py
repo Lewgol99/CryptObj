@@ -1,6 +1,8 @@
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography import x509
 from colorama import Fore, Style, init
 import struct, glob
@@ -77,7 +79,12 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 password=None,
                 backend=default_backend()
             )
-        self.key_size = self.private_key.key_size # define RSA key size
+
+            if isinstance(self.private_key, rsa.RSAPrivateKey):
+                self.key_info = f'RSA{self.private_key.key_size}'
+            else:
+                self.key_info = f'ECC{self.private_key.curve.name}'
+    
         self.public_keys = self._load_all_certificates()
         self.enabled = len(self.public_keys) >= 3
         print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
@@ -89,10 +96,10 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 with open(cert_file, 'rb') as f:
                     cert = x509.load_pem_x509_certificate(f.read(), default_backend())
                     pub_key = cert.public_key()
-                    if isinstance(pub_key, rsa.RSAPublicKey):
+                    if isinstance(pub_key, (rsa.RSAPublicKey, ec.EllipticCurvePublicKey)):
                         public_keys[cert_file.replace('_certificate.pem', '')] = pub_key
                     else:
-                        print(f"[SKIP] {cert_file}: Not RSA cert ({type(pub_key).__name__})")
+                        print(f"[SKIP] {cert_file}: Not RSA or ECC cert ({type(pub_key).__name__})")
             except:
                 pass
         return public_keys
@@ -126,15 +133,34 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             sym_key = os.urandom(32)
             encrypted_data = self.symmetric_encrypt(sym_key, data)
             packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
+
             for public_key in self.public_keys.values():
-                encrypted_key = public_key.encrypt(
-                    sym_key,
-                    padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                )
+                if isinstance(public_key, rsa.RSAPublicKey):
+                    encrypted_key = public_key.encrypt(
+                        sym_key,
+                        padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+                    )
+                elif isinstance(public_key, ec.EllipticCurvePublicKey):
+                    exchange_private_key = ec.generate_private_key(public_key.curve)
+                    shared_key = exchange_private_key.exchange(ec.ECDH(), public_key)
+                    # Perform key derivation.
+                    derived_key = HKDF(
+                        algorithm=hashes.SHA256(),
+                        length=32,
+                        salt=None,
+                        info=b'handshake data',
+                    ).derive(shared_key)
+                    exchange_pub_bytes = exchange_private_key.public_key().public_bytes(
+                        serialization.Encoding.X962,
+                        serialization.PublicFormat.UncompressedPoint
+                    )
+                    encrypted_key = struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + derived_key
+                    
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
+
             packet += encrypted_data
-            self.latency_monitor.stop_latency(f'encrypt_{self._cipher}_RSA{self.key_size}') # stop the latency monitor and attach the cipher to the result. 
-            self.throughput_monitor.stop_throughput(len(data), f'encrypt_{self._cipher}_RSA{self.key_size}') # stop the throughput monitor. 
+            self.latency_monitor.stop_latency(f'encrypt_{self._cipher}_{self.key_info}') # stop the latency monitor and attach the cipher to the result. 
+            self.throughput_monitor.stop_throughput(len(data), f'encrypt_{self._cipher}_{self.key_info}') # stop the throughput monitor. 
 
             hex_fp = packet[:20].hex()
             print(f"SEND {len(data):>5}B → {len(packet):>5}B  "
@@ -158,7 +184,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             except:
                 return packet[8:]
 
-            
             print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes') # show how many bytes are being decrypted
 
             offset, sym_key = 10, None
@@ -167,21 +192,33 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 offset += 2
                 encrypted_key = packet[offset:offset+key_length]
                 offset += key_length
+                
                 if sym_key is None:
                     try:
-                        sym_key = self.private_key.decrypt(
-                            encrypted_key,
-                            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                        )
-                    except:
-                        pass
-
-            if sym_key is None:
-                raise ValueError("Cannot decrypt key")
+                        if isinstance(self.private_key, rsa.RSAPrivateKey):
+                            sym_key = self.private_key.decrypt(
+                                encrypted_key,
+                                padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+                                )
+                        elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
+                            exchange_pub_len = struct.unpack('!H', encrypted_key[:2])[0]
+                            exchange_pub_bytes = encrypted_key[2:2+exchange_pub_len]
+                            exchange_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+                                self.private_key.curve, exchange_pub_bytes
+                            )
+                            shared_key = self.private_key.exchange(ec.ECDH(), exchange_public_key)
+                            sym_key = HKDF(
+                                algorithm=hashes.SHA256(),
+                                length=32,
+                                salt=None,
+                                info=b'handshake data',
+                                ).derive(shared_key)
+                    except Exception as ex:
+                        print(f'[KEY UNWRAP ERROR] {ex}')
 
             decrypted_data = self.symmetric_decrypt(sym_key, packet[offset:])
-            self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_RSA{self.key_size}') # stop the latency monitor and record the cipher 
-            self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_RSA{self.key_size}') # stop the throughput monitor. 
+            self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}') # stop the latency monitor and record the cipher 
+            self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}') # stop the throughput monitor. 
 
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             hex_fp = packet[:20].hex()
