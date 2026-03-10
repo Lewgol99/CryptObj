@@ -5,31 +5,33 @@ from colorama import Fore, Style # import colorama for colours
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf # import the original pysyncobj system 
 import datetime
-from cpu_monitor import CPUMonitor # import our data collection file for CPU
-from memory_monitor import MemoryMonitor # import our data collectiojn file for memory
 from pki_setup import PKI # import our setup file
 import os
 from request import get_ca_status, submit_csr_to_ca # import from our server request file
 from encryptor import AsymmetricEncryptor # import from our encryptor file 
 from digital_signature import DigitalSignature # import digital signature
 
-memory_monitor = MemoryMonitor() # define our memory monitor file
-cpu_monitor = CPUMonitor() # define our CPU monitor file
-
 if __name__ == '__main__':
     
     with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
         nodes = json.load(file)
 
+    with open('asymmetric_ciphers.json', 'r') as file: # open our ciphers file to select an asymmetric cipher
+        config = json.load(file)
+
     with open('rsa_keys.json', 'r') as file:  # open our RSA keys file to load a key
         rsa_keys = json.load(file)
 
-    with open('ciphers.json', 'r') as file: # open our ciphers file to select a cipher
+    with open('ecc_curves.json', 'r') as file: # open our ECC Curves to load a curve
+        curves = json.load(file)
+
+    with open('ciphers.json', 'r') as file: # open our ciphers file to select a symmetric cipher
         ciphers = json.load(file)
 
-    if len(sys.argv) < 4: # Define 4 system arguements at the terminal command line
-        print(Fore.YELLOW + f'Usage: {sys.argv[0]} node_name key_size cipher')
+    if len(sys.argv) < 5: # Define 5 system arguements at the terminal command line
+        print(Fore.YELLOW + f'Usage: {sys.argv[0]} node_name, asymmetric_cipher, key_size/curve, symmetric_cipher')
         print(Fore.YELLOW + f'Available nodes: {list(nodes.keys())}')
+        print(Fore.YELLOW + f'Available asymmetric ciphers: {config["asymmetric_ciphers"]}') # choose RSA or ECC as an arguement
         print(Fore.YELLOW + f'Available key sizes: {rsa_keys["key_sizes"]}')
         print(Fore.YELLOW + f'Available ciphers: {ciphers["ciphers"]}')
         sys.exit(-1)
@@ -131,29 +133,56 @@ if __name__ == '__main__':
     print(f"  self  : {self_addr}")
     print(f"  peers : {partner_addrs}\n")
 
-    key_size = int(sys.argv[2]) # make Asymmetric Key Size terminal arguemnt 3
-    if key_size not in rsa_keys['key_sizes']:
-        print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys.json')
+    asymmetric_cipher = sys.argv[2] # make selecting the asymmetric cipher arguement 2
+    if asymmetric_cipher not in config['asymmetric_ciphers']:
+        print(Fore.RED + f'Error: {asymmetric_cipher} not found in asymmetric_ciphers.json')
         sys.exit(-1)
 
-    selected_ciphers = sys.argv[3] # make Symmetric Cipher terminal arguement 4
+    key_param = sys.argv[3]
+
+    if asymmetric_cipher == 'RSA':
+        key_size = int(key_param)
+        if key_size not in rsa_keys['key_sizes']:
+            print(Fore.RED + f'Error: Key {key_size} not Found in rsa_keys.json')
+            sys.exit(-1)
+    elif asymmetric_cipher == 'ECC':
+        curve_name = key_param
+        if curve_name not in curves['ec_curves']:
+            print(Fore.RED + f'Error: Curve {curve_name} not Found in ec_curves.json')
+            sys.exit(-1)
+
+    selected_ciphers = sys.argv[4] # make Symmetric Cipher terminal arguement 4
     if selected_ciphers not in ciphers['ciphers']:
         print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
         sys.exit(-1)
     os.environ['SELECTED_CIPHER'] = selected_ciphers 
     AsymmetricEncryptor.set_cipher(selected_ciphers) # call the ciphers
 
+    # For Asymmetric Encryption (RSA or ECC)
+
     if not os.path.exists('pki_private_key.pem'):
         print(Fore.YELLOW + 'No private key found, generating...')
-        pki = PKI()
-        pki.generate_keys(key_size)  # pass key size in
-        pki.generate_csr()
-        result = submit_csr_to_ca(node_name)
+        if asymmetric_cipher == 'RSA':
+            pki = PKI()
+            pki.generate_keys(key_size)
+            pki.generate_csr()
+            result = submit_csr_to_ca(node_name)
+        elif asymmetric_cipher == 'ECC':
+            from ecc_keys import ECC_Keys
+            ecc = ECC_Keys()
+            ecc.Generate_Private_Key(curve_name)
+            ecc.Serialize_Private_Key()
+            ecc.Serialize_Public_Key()
+
+    # For Digital Signature (RSA or ECC)
 
     if not os.path.exists('signing_private_key.pem'):
         print(Fore.YELLOW + 'No signing key found, generating...')
         signer = DigitalSignature()
-        signer.generate_Private_Key(key_size)
+        if asymmetric_cipher == 'RSA':
+            signer.generate_Private_Key(key_size)
+        elif asymmetric_cipher == 'ECC':
+            signer.generate_Private_Key(curve_name)
         signer.serialize_Private_key()
         signer.serialize_Public_key()
         print(Fore.GREEN + 'Signing keys generated!')
