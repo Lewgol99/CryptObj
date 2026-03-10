@@ -11,6 +11,7 @@ from request import get_ca_status, submit_csr_to_ca # import from our server req
 from encryptor import AsymmetricEncryptor # import from our encryptor file 
 from digital_signature import DigitalSignature # import digital signature
 
+
 if __name__ == '__main__':
     
     with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
@@ -168,11 +169,10 @@ if __name__ == '__main__':
             pki.generate_csr()
             result = submit_csr_to_ca(node_name)
         elif asymmetric_cipher == 'ECC':
-            from ecc_keys import ECC_Keys
-            ecc = ECC_Keys()
-            ecc.Generate_Private_Key(curve_name)
-            ecc.Serialize_Private_Key()
-            ecc.Serialize_Public_Key()
+            pki = PKI()
+            pki.generate_ecc_keys(curve_name)
+            pki.generate_csr()
+            result = submit_csr_to_ca(node_name)
 
     # For Digital Signature (RSA or ECC)
 
