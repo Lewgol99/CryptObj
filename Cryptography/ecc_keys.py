@@ -25,7 +25,7 @@ class ECC_Keys:
             print(Fore.RED + f'Error: ECC Failed to Generate Curve!')
             return None
 
-    def Serialize_Private_key(self):
+    def Serialize_Private_Key(self):
         try:
             pem = self.private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
@@ -51,7 +51,7 @@ class ECC_Keys:
             print(Fore.RED + 'Error: Failed to Read ECC Private Key!')
             return None
 
-    def Extract_Public_key(self):
+    def Extract_Public_Key(self):
         try:
             if self.private_key is None:
                 print(Fore.RED + 'Error: No ECC Private Key Available!')
@@ -63,7 +63,7 @@ class ECC_Keys:
             print(Fore.RED + 'Error: ECC Public Key Failed to Extract!')
             return None
 
-    def Serialize_Public_key(self):
+    def Serialize_Public_Key(self):
         try:
             if self.private_key is None:
                 print(Fore.RED + 'Error: No ECC Private Key Available!')
