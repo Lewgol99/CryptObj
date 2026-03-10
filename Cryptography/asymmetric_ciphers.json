@@ -1,3 +1,3 @@
 {
-    "ciphers": ["RSA", "ECC"]
+    "asymmetric_ciphers": ["RSA", "ECC"]
 }
