@@ -7,7 +7,7 @@ class ECC_Keys:
     def __init__(self):
         self.private_key = None
     
-    def Generate_Private_key(self, curve_name): # Change this to be specific to ECC in Cryptography Library. 
+    def Generate_Private_Key(self, curve_name): # Change this to be specific to ECC in Cryptography Library. 
         try:
             with open('ecc_curves.json', 'r') as file:
                 config = json.load(file)
