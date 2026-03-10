@@ -6,7 +6,7 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
 
 ## Getting Started
 
-git clone token: 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
+git clone token: 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
 
 1. OPen all files in the directory!
 
