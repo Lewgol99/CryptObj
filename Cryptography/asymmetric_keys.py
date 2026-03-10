@@ -21,7 +21,7 @@ class Asymmetric_Keys:
             public_exponent=65537,
             key_size=key_size, # take the key size from the user input
             )
-            print(Fore.GREEN + 'Success: PKI Private Key Generation')
+            print(Fore.GREEN + 'Success: RSA Private Key Generation')
             return self.private_key
         except Exception as e:
             print(Fore.RED + 'Error: Failed to Generate PKI Private Key!')
