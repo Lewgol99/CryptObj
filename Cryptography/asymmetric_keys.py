@@ -24,7 +24,7 @@ class Asymmetric_Keys:
             print(Fore.GREEN + 'Success: RSA Private Key Generation')
             return self.private_key
         except Exception as e:
-            print(Fore.RED + 'Error: Failed to Generate PKI Private Key!')
+            print(Fore.RED + 'Error: Failed to Generate RSA Private Key!')
             return None
             
     def Serialize_Private_key(self):
