@@ -24,6 +24,7 @@ def getEncryptor(password):
     AsymmetricEncryptor.set_cipher(cipher)
     return AsymmetricEncryptor(password, node_count)
 
+
 class SymmetricEncryptor:
     _cipher = None
 
@@ -73,7 +74,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
         self.latency_monitor = LatencyMonitor()
         self.throughput_monitor = ThroughputMonitor()
 
-        # Use CLUSTER_NODE_COUNT env var if node_count not passed directly
         if node_count is None:
             node_count = int(os.environ.get('CLUSTER_NODE_COUNT', '3'))
         self.node_count = node_count
@@ -105,7 +105,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                         public_keys[cert_file.replace('_certificate.pem', '')] = pub_key
                     else:
                         print(f"[SKIP] {cert_file}: Not RSA or ECC cert ({type(pub_key).__name__})")
-            except:
+            except Exception:
                 pass
         return public_keys
 
@@ -123,6 +123,13 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
     @classmethod
     def set_context(cls, label: str):
         cls._raft_context = label
+
+    def _try_unwrap_rsa(self, encrypted_key):
+        """Attempt to unwrap a sym_key from an RSA recipient slot using our private key."""
+        return self.private_key.decrypt(
+            encrypted_key,
+            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+        )
 
     def _try_unwrap_ecc(self, encrypted_key):
         """Attempt to unwrap a sym_key from an ECC recipient slot using our private key."""
@@ -210,20 +217,19 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 num_recipients = struct.unpack('!H', packet[8:10])[0]
                 if num_recipients == 0 or num_recipients > 100:
                     return packet[8:]
-            except:
+            except Exception:
                 return packet[8:]
 
             print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes')
 
-            # Collect all recipient slots first, then try each one
+            # Parse all recipient slots first
             offset = 10
             recipient_slots = []
             for _ in range(num_recipients):
                 key_length = struct.unpack('!H', packet[offset:offset+2])[0]
                 offset += 2
-                encrypted_key = packet[offset:offset+key_length]
+                recipient_slots.append(packet[offset:offset+key_length])
                 offset += key_length
-                recipient_slots.append(encrypted_key)
 
             encrypted_data = packet[offset:]
             sym_key = None
@@ -231,22 +237,16 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             for encrypted_key in recipient_slots:
                 try:
                     if isinstance(self.private_key, rsa.RSAPrivateKey):
-                        candidate = self.private_key.decrypt(
-                            encrypted_key,
-                            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                        )
-                        # RSA decrypt either works or throws — if we get here it's ours
-                        sym_key = candidate
-                        break
+                        # RSA: decrypt throws if this slot isn't ours — that's expected, just try next
+                        sym_key = self._try_unwrap_rsa(encrypted_key)
+                        break  # RSA decrypt succeeded — this is our slot
 
                     elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
+                        # ECC: unwrap never throws so verify by attempting decryption
                         candidate = self._try_unwrap_ecc(encrypted_key)
-                        # ECC never throws so we must verify by attempting decryption
                         try:
                             result = self.symmetric_decrypt(candidate, encrypted_data)
-                            # Decryption succeeded — this is our slot
-                            sym_key = candidate
-                            # Return early since we already have the decrypted data
+                            # Symmetric decrypt succeeded — this is our slot
                             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
                             self.throughput_monitor.stop_throughput(len(result), f'decrypt_{self._cipher}_{self.key_info}')
                             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
@@ -255,15 +255,13 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
                             return result
                         except Exception:
-                            # Wrong slot — try the next one
-                            continue
+                            continue  # Wrong slot, try the next one silently
 
-                except Exception as ex:
-                    print(f'[KEY UNWRAP ERROR] {ex}')
-                    continue
+                except Exception:
+                    continue  # Wrong slot, try the next one silently
 
             if sym_key is None:
-                raise ValueError("Could not unwrap symmetric key — no matching recipient slot found")
+                raise ValueError("No matching recipient slot found in packet")
 
             decrypted_data = self.symmetric_decrypt(sym_key, encrypted_data)
             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
