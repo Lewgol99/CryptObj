@@ -7,7 +7,7 @@ from colorama import Fore
 class PKI:
     def __init__(self):
         self.keygen = None
-        self.private_key = None 
+        self.private_key = None
 
     def generate_keys(self, key_size):
         self.keygen = Asymmetric_Keys()
@@ -18,19 +18,13 @@ class PKI:
     def generate_ecc_keys(self, curve_name):
         self.keygen = ECC_Keys()
         self.keygen.Generate_Private_Key(curve_name)
+        self.keygen.Serialize_Private_Key()
         self.private_key = self.keygen.private_key
-        pem = self.private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        with open('pki_private_key.pem', 'wb') as f:
-            f.write(pem)
         self.keygen.Serialize_Public_Key()
 
     def generate_csr(self):
         if self.private_key is None:
-            print(Fore.RED + f'Error: Generate Keys First!')
+            print(Fore.RED + 'Error: Generate Keys First!')
             return None
         csr = CertificateSigningRequest(self.private_key)
         csr.Create_CSR()
