@@ -1,6 +1,7 @@
 from asymmetric_keys import Asymmetric_Keys
 from ecc_keys import ECC_Keys
 from csr import CertificateSigningRequest
+from cryptography.hazmat.primitives import serialization
 from colorama import Fore
 
 class PKI:
@@ -17,10 +18,16 @@ class PKI:
     def generate_ecc_keys(self, curve_name):
         self.keygen = ECC_Keys()
         self.keygen.Generate_Private_Key(curve_name)
-        self.keygen.Serialize_Private_Key()
-        self.keygen.Serialize_Public_Key()
         self.private_key = self.keygen.private_key
-        
+        pem = self.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        with open('pki_private_key.pem', 'wb') as f:
+            f.write(pem)
+        self.keygen.Serialize_Public_Key()
+
     def generate_csr(self):
         if self.private_key is None:
             print(Fore.RED + f'Error: Generate Keys First!')
