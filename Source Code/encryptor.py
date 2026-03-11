@@ -6,7 +6,8 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography import x509
 from colorama import Fore, Style, init
 import struct, glob
-import time
+import hmac
+import hashlib
 import os
 from Crypto.Cipher import AES
 from Crypto.Cipher import ChaCha20
@@ -20,9 +21,8 @@ HAS_CRYPTO = True  # Required by pysyncobj
 # Required by pysyncobj
 def getEncryptor(password):
     cipher = os.environ.get('SELECTED_CIPHER', 'AES')
-    node_count = int(os.environ.get('CLUSTER_NODE_COUNT', '3'))
     AsymmetricEncryptor.set_cipher(cipher)
-    return AsymmetricEncryptor(password, node_count)
+    return AsymmetricEncryptor(password)
 
 
 class SymmetricEncryptor:
@@ -69,14 +69,10 @@ class SymmetricEncryptor:
 
 
 class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
-    def __init__(self, password=None, node_count=None):
+    def __init__(self, password=None):
         super().__init__()
         self.latency_monitor = LatencyMonitor()
         self.throughput_monitor = ThroughputMonitor()
-
-        if node_count is None:
-            node_count = int(os.environ.get('CLUSTER_NODE_COUNT', '3'))
-        self.node_count = node_count
 
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
@@ -85,14 +81,15 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 backend=default_backend()
             )
 
+        # Support both RSA and ECC
         if isinstance(self.private_key, rsa.RSAPrivateKey):
             self.key_info = f'RSA{self.private_key.key_size}'
         else:
             self.key_info = f'ECC{self.private_key.curve.name}'
 
         self.public_keys = self._load_all_certificates()
-        self.enabled = len(self.public_keys) >= self.node_count
-        print(f"Loaded {len(self.public_keys)} certs (need {self.node_count}), encrypt={'ON' if self.enabled else 'OFF'}")
+        self.enabled = len(self.public_keys) >= 3
+        print(f"Loaded {len(self.public_keys)} certs, encrypt={'ON' if self.enabled else 'OFF'}")
 
     def _load_all_certificates(self):
         public_keys = {}
@@ -114,7 +111,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
         if len(new_certs) > len(self.public_keys):
             print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
             self.public_keys = new_certs
-            self.enabled = len(self.public_keys) >= self.node_count
+            self.enabled = len(self.public_keys) >= 3
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
@@ -124,15 +121,46 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
     def set_context(cls, label: str):
         cls._raft_context = label
 
-    def _try_unwrap_rsa(self, encrypted_key):
-        """Attempt to unwrap a sym_key from an RSA recipient slot using our private key."""
+    def _add_hmac(self, key, data):
+        mac = hmac.new(key, data, hashlib.sha256).digest()
+        return mac + data
+
+    def _verify_hmac(self, key, data):
+        mac, payload = data[:32], data[32:]
+        expected = hmac.new(key, payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(mac, expected):
+            raise ValueError("HMAC verification failed")
+        return payload
+
+    def _wrap_key_rsa(self, public_key, sym_key):
+        return public_key.encrypt(
+            sym_key,
+            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+        )
+
+    def _unwrap_key_rsa(self, encrypted_key):
         return self.private_key.decrypt(
             encrypted_key,
             padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
         )
 
-    def _try_unwrap_ecc(self, encrypted_key):
-        """Attempt to unwrap a sym_key from an ECC recipient slot using our private key."""
+    def _wrap_key_ecc(self, public_key, sym_key):
+        exchange_private_key = ec.generate_private_key(public_key.curve)
+        shared_key = exchange_private_key.exchange(ec.ECDH(), public_key)
+        derived_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'handshake data',
+        ).derive(shared_key)
+        exchange_pub_bytes = exchange_private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint
+        )
+        wrapped_key = bytes(a ^ b for a, b in zip(sym_key, derived_key))
+        return struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + wrapped_key
+
+    def _unwrap_key_ecc(self, encrypted_key):
         exchange_pub_len = struct.unpack('!H', encrypted_key[:2])[0]
         exchange_pub_bytes = encrypted_key[2:2+exchange_pub_len]
         wrapped_key = encrypted_key[2+exchange_pub_len:]
@@ -160,38 +188,15 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             print(Fore.YELLOW + f'Pre-Encryption Bytes Size: {len(data)} bytes')
 
             sym_key = os.urandom(32)
-            encrypted_data = self.symmetric_encrypt(sym_key, data)
-            packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
+            authenticated_data = self._add_hmac(sym_key, data)
+            encrypted_data = self.symmetric_encrypt(sym_key, authenticated_data)
 
+            packet = struct.pack('!Q', ts) + struct.pack('!H', len(self.public_keys))
             for public_key in self.public_keys.values():
                 if isinstance(public_key, rsa.RSAPublicKey):
-                    encrypted_key = public_key.encrypt(
-                        sym_key,
-                        padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                    )
-
-                elif isinstance(public_key, ec.EllipticCurvePublicKey):
-                    # Generate a fresh ephemeral keypair for this recipient
-                    exchange_private_key = ec.generate_private_key(public_key.curve)
-                    # ECDH: combine our ephemeral private key with recipient's public key
-                    shared_key = exchange_private_key.exchange(ec.ECDH(), public_key)
-                    # Derive a 32-byte wrapping key from the shared secret
-                    derived_key = HKDF(
-                        algorithm=hashes.SHA256(),
-                        length=32,
-                        salt=None,
-                        info=b'handshake data',
-                    ).derive(shared_key)
-                    # Ephemeral public key goes in the packet so recipient can reproduce the shared secret
-                    exchange_pub_bytes = exchange_private_key.public_key().public_bytes(
-                        serialization.Encoding.X962,
-                        serialization.PublicFormat.UncompressedPoint
-                    )
-                    # Wrap the sym_key by XORing with the derived key
-                    wrapped_key = bytes(a ^ b for a, b in zip(sym_key, derived_key))
-                    # Packet: [2-byte ephemeral pub len][ephemeral pub bytes][32-byte wrapped sym_key]
-                    encrypted_key = struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + wrapped_key
-
+                    encrypted_key = self._wrap_key_rsa(public_key, sym_key)
+                else:
+                    encrypted_key = self._wrap_key_ecc(public_key, sym_key)
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
 
             packet += encrypted_data
@@ -222,8 +227,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
 
             print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes')
 
-            # Parse all recipient slots first
-            offset = 10
+            offset, sym_key = 10, None
             recipient_slots = []
             for _ in range(num_recipients):
                 key_length = struct.unpack('!H', packet[offset:offset+2])[0]
@@ -232,21 +236,19 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 offset += key_length
 
             encrypted_data = packet[offset:]
-            sym_key = None
 
             for encrypted_key in recipient_slots:
                 try:
                     if isinstance(self.private_key, rsa.RSAPrivateKey):
-                        # RSA: decrypt throws if this slot isn't ours — that's expected, just try next
-                        sym_key = self._try_unwrap_rsa(encrypted_key)
-                        break  # RSA decrypt succeeded — this is our slot
-
-                    elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
-                        # ECC: unwrap never throws so verify by attempting decryption
-                        candidate = self._try_unwrap_ecc(encrypted_key)
+                        sym_key = self._unwrap_key_rsa(encrypted_key)
+                        break  # RSA throws on wrong slot so if we're here it's ours
+                    else:
+                        candidate = self._unwrap_key_ecc(encrypted_key)
                         try:
                             result = self.symmetric_decrypt(candidate, encrypted_data)
-                            # Symmetric decrypt succeeded — this is our slot
+                            result = self._verify_hmac(candidate, result)
+                            sym_key = candidate
+                            # Log and return directly for ECC
                             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
                             self.throughput_monitor.stop_throughput(len(result), f'decrypt_{self._cipher}_{self.key_info}')
                             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
@@ -255,15 +257,17 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
                             return result
                         except Exception:
-                            continue  # Wrong slot, try the next one silently
-
+                            continue  # Wrong slot, try next
                 except Exception:
-                    continue  # Wrong slot, try the next one silently
+                    continue
 
             if sym_key is None:
-                raise ValueError("No matching recipient slot found in packet")
+                raise ValueError("Cannot decrypt key")
 
+            # RSA path — HMAC verify then return
             decrypted_data = self.symmetric_decrypt(sym_key, encrypted_data)
+            decrypted_data = self._verify_hmac(sym_key, decrypted_data)
+
             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
             self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}')
 
