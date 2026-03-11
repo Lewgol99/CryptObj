@@ -24,7 +24,6 @@ def getEncryptor(password):
     AsymmetricEncryptor.set_cipher(cipher)
     return AsymmetricEncryptor(password, node_count)
 
-
 class SymmetricEncryptor:
     _cipher = None
 
@@ -86,10 +85,10 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 backend=default_backend()
             )
 
-            if isinstance(self.private_key, rsa.RSAPrivateKey):
-                self.key_info = f'RSA{self.private_key.key_size}'
-            else:
-                self.key_info = f'ECC{self.private_key.curve.name}'
+        if isinstance(self.private_key, rsa.RSAPrivateKey):
+            self.key_info = f'RSA{self.private_key.key_size}'
+        else:
+            self.key_info = f'ECC{self.private_key.curve.name}'
 
         self.public_keys = self._load_all_certificates()
         self.enabled = len(self.public_keys) >= self.node_count
@@ -125,6 +124,23 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
     def set_context(cls, label: str):
         cls._raft_context = label
 
+    def _try_unwrap_ecc(self, encrypted_key):
+        """Attempt to unwrap a sym_key from an ECC recipient slot using our private key."""
+        exchange_pub_len = struct.unpack('!H', encrypted_key[:2])[0]
+        exchange_pub_bytes = encrypted_key[2:2+exchange_pub_len]
+        wrapped_key = encrypted_key[2+exchange_pub_len:]
+        exchange_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+            self.private_key.curve, exchange_pub_bytes
+        )
+        shared_key = self.private_key.exchange(ec.ECDH(), exchange_public_key)
+        derived_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'handshake data',
+        ).derive(shared_key)
+        return bytes(a ^ b for a, b in zip(wrapped_key, derived_key))
+
     def encrypt_at_time(self, data, ts):  # Required by pysyncobj
         self.latency_monitor.start_latency()
         self.throughput_monitor.start_throughput()
@@ -146,20 +162,28 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                         sym_key,
                         padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
                     )
+
                 elif isinstance(public_key, ec.EllipticCurvePublicKey):
+                    # Generate a fresh ephemeral keypair for this recipient
                     exchange_private_key = ec.generate_private_key(public_key.curve)
+                    # ECDH: combine our ephemeral private key with recipient's public key
                     shared_key = exchange_private_key.exchange(ec.ECDH(), public_key)
+                    # Derive a 32-byte wrapping key from the shared secret
                     derived_key = HKDF(
                         algorithm=hashes.SHA256(),
                         length=32,
                         salt=None,
                         info=b'handshake data',
                     ).derive(shared_key)
+                    # Ephemeral public key goes in the packet so recipient can reproduce the shared secret
                     exchange_pub_bytes = exchange_private_key.public_key().public_bytes(
                         serialization.Encoding.X962,
                         serialization.PublicFormat.UncompressedPoint
                     )
-                    encrypted_key = struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + derived_key
+                    # Wrap the sym_key by XORing with the derived key
+                    wrapped_key = bytes(a ^ b for a, b in zip(sym_key, derived_key))
+                    # Packet: [2-byte ephemeral pub len][ephemeral pub bytes][32-byte wrapped sym_key]
+                    encrypted_key = struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + wrapped_key
 
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
 
@@ -191,37 +215,57 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
 
             print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes')
 
-            offset, sym_key = 10, None
+            # Collect all recipient slots first, then try each one
+            offset = 10
+            recipient_slots = []
             for _ in range(num_recipients):
                 key_length = struct.unpack('!H', packet[offset:offset+2])[0]
                 offset += 2
                 encrypted_key = packet[offset:offset+key_length]
                 offset += key_length
+                recipient_slots.append(encrypted_key)
 
-                if sym_key is None:
-                    try:
-                        if isinstance(self.private_key, rsa.RSAPrivateKey):
-                            sym_key = self.private_key.decrypt(
-                                encrypted_key,
-                                padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                            )
-                        elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
-                            exchange_pub_len = struct.unpack('!H', encrypted_key[:2])[0]
-                            exchange_pub_bytes = encrypted_key[2:2+exchange_pub_len]
-                            exchange_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
-                                self.private_key.curve, exchange_pub_bytes
-                            )
-                            shared_key = self.private_key.exchange(ec.ECDH(), exchange_public_key)
-                            sym_key = HKDF(
-                                algorithm=hashes.SHA256(),
-                                length=32,
-                                salt=None,
-                                info=b'handshake data',
-                            ).derive(shared_key)
-                    except Exception as ex:
-                        print(f'[KEY UNWRAP ERROR] {ex}')
+            encrypted_data = packet[offset:]
+            sym_key = None
 
-            decrypted_data = self.symmetric_decrypt(sym_key, packet[offset:])
+            for encrypted_key in recipient_slots:
+                try:
+                    if isinstance(self.private_key, rsa.RSAPrivateKey):
+                        candidate = self.private_key.decrypt(
+                            encrypted_key,
+                            padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+                        )
+                        # RSA decrypt either works or throws — if we get here it's ours
+                        sym_key = candidate
+                        break
+
+                    elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
+                        candidate = self._try_unwrap_ecc(encrypted_key)
+                        # ECC never throws so we must verify by attempting decryption
+                        try:
+                            result = self.symmetric_decrypt(candidate, encrypted_data)
+                            # Decryption succeeded — this is our slot
+                            sym_key = candidate
+                            # Return early since we already have the decrypted data
+                            self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
+                            self.throughput_monitor.stop_throughput(len(result), f'decrypt_{self._cipher}_{self.key_info}')
+                            ctx = f"  ← {self._raft_context}" if self._raft_context else ""
+                            hex_fp = packet[:20].hex()
+                            print(f"RECV {len(packet):>5}B → {len(result):>5}B  "
+                                  f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}{ctx}")
+                            return result
+                        except Exception:
+                            # Wrong slot — try the next one
+                            continue
+
+                except Exception as ex:
+                    print(f'[KEY UNWRAP ERROR] {ex}')
+                    continue
+
+            if sym_key is None:
+                raise ValueError("Could not unwrap symmetric key — no matching recipient slot found")
+
+            decrypted_data = self.symmetric_decrypt(sym_key, encrypted_data)
             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
             self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}')
 
