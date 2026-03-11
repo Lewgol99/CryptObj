@@ -20,8 +20,9 @@ HAS_CRYPTO = True  # Required by pysyncobj
 # Required by pysyncobj
 def getEncryptor(password):
     cipher = os.environ.get('SELECTED_CIPHER', 'AES')
+    node_count = int(os.environ.get('CLUSTER_NODE_COUNT', '3'))
     AsymmetricEncryptor.set_cipher(cipher)
-    return AsymmetricEncryptor(password)
+    return AsymmetricEncryptor(password, node_count)
 
 
 class SymmetricEncryptor:
@@ -68,10 +69,15 @@ class SymmetricEncryptor:
 
 
 class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
-    def __init__(self, password=None):
+    def __init__(self, password=None, node_count=None):
         super().__init__()
         self.latency_monitor = LatencyMonitor()
         self.throughput_monitor = ThroughputMonitor()
+
+        # Use CLUSTER_NODE_COUNT env var if node_count not passed directly
+        if node_count is None:
+            node_count = int(os.environ.get('CLUSTER_NODE_COUNT', '3'))
+        self.node_count = node_count
 
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
@@ -84,10 +90,10 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 self.key_info = f'RSA{self.private_key.key_size}'
             else:
                 self.key_info = f'ECC{self.private_key.curve.name}'
-    
+
         self.public_keys = self._load_all_certificates()
-        self.enabled = len(self.public_keys) >= 3
-        print(f"Loaded {len(self.public_keys)} RSA certs, encrypt={'ON' if self.enabled else 'OFF'}")
+        self.enabled = len(self.public_keys) >= self.node_count
+        print(f"Loaded {len(self.public_keys)} certs (need {self.node_count}), encrypt={'ON' if self.enabled else 'OFF'}")
 
     def _load_all_certificates(self):
         public_keys = {}
@@ -109,7 +115,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
         if len(new_certs) > len(self.public_keys):
             print(f"[CERT REFRESH] Found {len(new_certs) - len(self.public_keys)} new certificates!")
             self.public_keys = new_certs
-            self.enabled = len(self.public_keys) >= 3
+            self.enabled = len(self.public_keys) >= self.node_count
             if self.enabled:
                 print(f"[ENCRYPTION] Now enabled with {len(self.public_keys)} certificates!")
 
@@ -119,16 +125,16 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
     def set_context(cls, label: str):
         cls._raft_context = label
 
-    def encrypt_at_time(self, data, ts): # Required by pysyncobj the function is called in TCP Connector 
-        self.latency_monitor.start_latency() # start the latency monitor.
-        self.throughput_monitor.start_throughput() # start the throughput monitor. 
+    def encrypt_at_time(self, data, ts):  # Required by pysyncobj
+        self.latency_monitor.start_latency()
+        self.throughput_monitor.start_throughput()
         try:
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             if not self.enabled:
                 print(f"SEND {len(data):>5}B  [no encryption]{ctx}")
                 return struct.pack('!Q', ts) + data
 
-            print(Fore.YELLOW + f'Pre-Encryption Bytes Size: {len(data)} bytes') # show how many bytes are being encrypted 
+            print(Fore.YELLOW + f'Pre-Encryption Bytes Size: {len(data)} bytes')
 
             sym_key = os.urandom(32)
             encrypted_data = self.symmetric_encrypt(sym_key, data)
@@ -143,7 +149,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 elif isinstance(public_key, ec.EllipticCurvePublicKey):
                     exchange_private_key = ec.generate_private_key(public_key.curve)
                     shared_key = exchange_private_key.exchange(ec.ECDH(), public_key)
-                    # Perform key derivation.
                     derived_key = HKDF(
                         algorithm=hashes.SHA256(),
                         length=32,
@@ -155,12 +160,12 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                         serialization.PublicFormat.UncompressedPoint
                     )
                     encrypted_key = struct.pack('!H', len(exchange_pub_bytes)) + exchange_pub_bytes + derived_key
-                    
+
                 packet += struct.pack('!H', len(encrypted_key)) + encrypted_key
 
             packet += encrypted_data
-            self.latency_monitor.stop_latency(f'encrypt_{self._cipher}_{self.key_info}') # stop the latency monitor and attach the cipher to the result. 
-            self.throughput_monitor.stop_throughput(len(data), f'encrypt_{self._cipher}_{self.key_info}') # stop the throughput monitor. 
+            self.latency_monitor.stop_latency(f'encrypt_{self._cipher}_{self.key_info}')
+            self.throughput_monitor.stop_throughput(len(data), f'encrypt_{self._cipher}_{self.key_info}')
 
             hex_fp = packet[:20].hex()
             print(f"SEND {len(data):>5}B → {len(packet):>5}B  "
@@ -172,8 +177,8 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             raise
 
     def decrypt(self, packet):  # Required by pysyncobj
-        self.latency_monitor.start_latency() # start the latency monitor.
-        self.throughput_monitor.start_throughput() # start the throughput monitor.
+        self.latency_monitor.start_latency()
+        self.throughput_monitor.start_throughput()
         try:
             if len(packet) < 14:
                 return packet[8:]
@@ -184,7 +189,7 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             except:
                 return packet[8:]
 
-            print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes') # show how many bytes are being decrypted
+            print(Fore.YELLOW + f'Pre-Decryption Bytes Size: {len(packet)} bytes')
 
             offset, sym_key = 10, None
             for _ in range(num_recipients):
@@ -192,14 +197,14 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                 offset += 2
                 encrypted_key = packet[offset:offset+key_length]
                 offset += key_length
-                
+
                 if sym_key is None:
                     try:
                         if isinstance(self.private_key, rsa.RSAPrivateKey):
                             sym_key = self.private_key.decrypt(
                                 encrypted_key,
                                 padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-                                )
+                            )
                         elif isinstance(self.private_key, ec.EllipticCurvePrivateKey):
                             exchange_pub_len = struct.unpack('!H', encrypted_key[:2])[0]
                             exchange_pub_bytes = encrypted_key[2:2+exchange_pub_len]
@@ -212,13 +217,13 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                                 length=32,
                                 salt=None,
                                 info=b'handshake data',
-                                ).derive(shared_key)
+                            ).derive(shared_key)
                     except Exception as ex:
                         print(f'[KEY UNWRAP ERROR] {ex}')
 
             decrypted_data = self.symmetric_decrypt(sym_key, packet[offset:])
-            self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}') # stop the latency monitor and record the cipher 
-            self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}') # stop the throughput monitor. 
+            self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
+            self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}')
 
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             hex_fp = packet[:20].hex()
