@@ -1,6 +1,5 @@
 #!/bin/bash
-cp transport.py $(python3 -c "import pysyncobj, os; print(os.path.dirname(pysyncobj.__file__))")/transport.py
-echo "✓ RSA and ECC Transport Installed!"
-
-cp encryptor.py $(python3 -c "import pysyncobj, os; print(os.path.dirname(pysyncobj.__file__))")/encryptor.py
-echo "✓ RSA and ECC Encryptor Installed!"
+cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
+echo "✓ Transport Installed!"
+cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
+echo "✓ Encryptor Installed!"
