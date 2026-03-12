@@ -41,10 +41,6 @@ router166 = as166.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router166.joinNetwork('ix100', '10.100.0.166')
 router166.addSoftware('git')
 router166.addSoftware('python3')
-router166.addBuildCommand('git clone https://Lewis_Golightly:glpat-JYlJFrTOHelHjmyr9z_WiW86MQp1Ojlkcm0xCw.01.1207pf6j2@gitlab.com/phd_team/tlxpp-pbac.git')
-router166.appendStartCommand('chmod -R 777 tlxpp-pbac')
-router166.appendStartCommand('cd tlxpp-pbac')
-router166.appendStartCommand('find . -mindepth 2 -type f -exec mv -t . {} +')
 
 # AS176
 as176 = base.createAutonomousSystem(176)
@@ -52,10 +48,6 @@ router176 = as176.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router176.joinNetwork('ix100', '10.100.0.176')
 router176.addSoftware('git')
 router176.addSoftware('python3')
-router176.addBuildCommand('git clone https://Lewis_Golightly:glpat-JYlJFrTOHelHjmyr9z_WiW86MQp1Ojlkcm0xCw.01.1207pf6j2@gitlab.com/phd_team/tlxpp-pbac.git')
-router176.appendStartCommand('chmod -R 777 tlxpp-pbac')
-router176.appendStartCommand('cd tlxpp-pbac')
-router176.appendStartCommand('find . -mindepth 2 -type f -exec mv -t . {} +')
 
 # AS186
 as186 = base.createAutonomousSystem(186)
@@ -63,10 +55,6 @@ router186 = as186.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router186.joinNetwork('ix100', '10.100.0.186')
 router186.addSoftware('git')
 router186.addSoftware('python3')
-router186.addBuildCommand('git clone https://Lewis_Golightly:glpat-JYlJFrTOHelHjmyr9z_WiW86MQp1Ojlkcm0xCw.01.1207pf6j2@gitlab.com/phd_team/tlxpp-pbac.git')
-router186.appendStartCommand('chmod -R 777 tlxpp-pbac')
-router186.appendStartCommand('cd tlxpp-pbac')
-router186.appendStartCommand('find . -mindepth 2 -type f -exec mv -t . {} +')
 
 # AS196
 as196 = base.createAutonomousSystem(196)
@@ -74,11 +62,6 @@ router196 = as196.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router196.joinNetwork('ix100', '10.100.0.196')
 router196.addSoftware('git')
 router196.addSoftware('python3')
-router196.addBuildCommand('git clone https://Lewis_Golightly:glpat-JYlJFrTOHelHjmyr9z_WiW86MQp1Ojlkcm0xCw.01.1207pf6j2@gitlab.com/phd_team/tlxpp-pbac.git')
-router196.appendStartCommand('chmod -R 777 tlxpp-pbac')
-router196.appendStartCommand('cd tlxpp-pbac')
-router196.appendStartCommand('find . -mindepth 2 -type f -exec mv -t . {} +')
-
 ###############################################################################
 
 # Peering
