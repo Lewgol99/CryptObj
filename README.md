@@ -50,7 +50,7 @@ python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cip
 
 
 ## Publications
-![ResearchGate](https://img.shields.io/badge/ResearchGate-00CCBB?style=for-the-badge&logo=ResearchGate&logoColor=white) ![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)
+![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)
 
 ```python
 
