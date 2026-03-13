@@ -23,7 +23,7 @@ Emulator for deployment (optional):
 
 
 ## Getting Started
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)  [![Downloads](https://img.shields.io/github/downloads/hichipli/CiteBar/total?style=flat-square)](https://github.com/hichipli/CiteBar/releases)
 
 To get started copy the new source code files to replace the ones from the original PySyncObj project. 
 
