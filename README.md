@@ -40,10 +40,6 @@ cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 
 git clone token: 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
 
-cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py 
-
-
-cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 
 1. OPen all files in the directory!
 
