@@ -6,6 +6,7 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
 
 
 ## Replace Source Code
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
 To get started copy the new source code files to replace the ones from the original PySyncObj project. 
 
