@@ -7,6 +7,8 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
 
 ## Getting Started
 
+To get started copy the new source code files to replace the ones from the original PySyncObj project. 
+
 
 ```python
 cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py 
