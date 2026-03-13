@@ -39,7 +39,7 @@ cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 To run the systems the node name, asymmetric cipher, and symmetric cipher must be defined as a command line arguement
 
 ```python
-python3 ./pysyncobj+ <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
+python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
 ```
 
 
