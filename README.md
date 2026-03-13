@@ -5,7 +5,7 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
 <img width="431" height="330" alt="image" src="https://github.com/user-attachments/assets/c075198d-4593-47c9-a670-bdee7a0f4c23" />
 
 
-## Getting Started
+## Replace Source Code
 
 To get started copy the new source code files to replace the ones from the original PySyncObj project. 
 
