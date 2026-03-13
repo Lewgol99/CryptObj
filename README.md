@@ -1,4 +1,4 @@
-## PySyncObj+ Protocol
+## PySyncObj+ Protocol [![Downloads](https://img.shields.io/github/downloads/hichipli/CiteBar/total?style=flat-square)](https://github.com/hichipli/CiteBar/releases)
 
 The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric Encryption into the protocol for secure consensus in distributed systems. This validates NIST security properties for information security and can be used as a network protocol for security applications.  
 
@@ -23,7 +23,7 @@ Emulator for deployment (optional):
 
 
 ## Getting Started
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)  [![Downloads](https://img.shields.io/github/downloads/hichipli/CiteBar/total?style=flat-square)](https://github.com/hichipli/CiteBar/releases)
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
 To get started copy the new source code files to replace the ones from the original PySyncObj project. 
 
