@@ -42,7 +42,7 @@ Install the dependancies for PySyncObj+.
 python3 ./raft+.py 
 ```
 
-To run the systems the node name, asymmetric cipher, options for the key size and curve, and symmetric cipher must be defined as a command line arguement. 
+To run the system ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement. 
 
 ```python
 python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
