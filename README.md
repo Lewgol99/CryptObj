@@ -9,7 +9,7 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
 
 ![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)
 
-The original PySyncObj file can be accessed from below. 
+Original PySyncObj:
 
 ```python
  https://github.com/bakwc/PySyncObj
