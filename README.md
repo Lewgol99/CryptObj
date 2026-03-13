@@ -13,6 +13,10 @@ The objectives of PySyncObj+ project is to implement Asymmetric and Symmetric En
  https://github.com/bakwc/PySyncObj
 ```
 
+```python
+ https://github.com/seed-labs/seed-emulator
+```
+
 
 ## Getting Started
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
