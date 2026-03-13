@@ -36,6 +36,12 @@ cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
 cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 ```
 
+Install the dependancies for the system 
+
+```python
+python3 ./raft+.py 
+```
+
 To run the systems the node name, asymmetric cipher, options for the key size and curve, and symmetric cipher must be defined as a command line arguement. 
 
 ```python
