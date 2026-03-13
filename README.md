@@ -46,3 +46,4 @@ lftp -u Lewgol99 -e "set ssl:verify-certificate no; set ftp:ssl-protect-data tru
 ## Publications
 
 ## License
+[![Licence](https://img.shields.io/github/license/Ileriayo/markdown-badges?style=for-the-badge)](./LICENSE)
