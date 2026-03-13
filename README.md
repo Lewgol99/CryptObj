@@ -36,7 +36,7 @@ cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
 cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 ```
 
-Install the dependancies for the system 
+Install the dependancies for PySyncObj+. 
 
 ```python
 python3 ./raft+.py 
