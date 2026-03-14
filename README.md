@@ -25,6 +25,12 @@ Emulator for deployment (optional):
 ## Getting Started
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
+Install the dependencies for PySyncObj+. 
+
+```python
+python3 ./raft+.py 
+```
+
 To get started copy the new source code files to replace the ones from the original PySyncObj project. 
 
 
@@ -34,12 +40,6 @@ cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
 
 ```python
 cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
-```
-
-Install the dependancies for PySyncObj+. 
-
-```python
-python3 ./raft+.py 
 ```
 
 To run the system ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement. 
