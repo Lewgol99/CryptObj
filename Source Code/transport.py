@@ -6,6 +6,7 @@ from .tcp_connection import TcpConnection, CONNECTION_STATE
 from .tcp_server import TcpServer
 import functools
 import os
+import pickle
 import struct
 import threading
 import time
@@ -92,6 +93,81 @@ class Transport(object):
         pass
 
 
+# ── Signing wire format ────────────────────────────────────────────────────────
+#
+#  Every post-handshake Raft message is wrapped as:
+#
+#    [ 1-byte flags ][ 2-byte sig_len ][ signature ][ payload_bytes ]
+#
+#  flags bit 0 = 1  → payload was originally a dict (pickle-serialised here,
+#                      deserialised on receive before passing back up to Raft)
+#  flags bit 0 = 0  → payload was already bytes
+#
+#  This is applied BEFORE the TcpConnection encryptor, so the encryptor
+#  encrypts our signed wrapper.  On receive the encryptor decrypts first,
+#  then _onVerifiedMessageReceived gets our signed wrapper as bytes.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+
+_FLAG_WAS_DICT = 0x01
+
+
+def _wrap_and_sign(signer, message):
+    """Serialise + sign a Raft message. Returns bytes."""
+    if isinstance(message, bytes):
+        flags   = 0x00
+        payload = message
+    else:
+        flags   = _FLAG_WAS_DICT
+        payload = pickle.dumps(message)
+
+    signature = signer.sign(payload)
+    if signature is None:
+        print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
+        signature = b''
+
+    header = struct.pack('!BH', flags, len(signature))
+    return header + signature + payload
+
+
+def _unwrap_and_verify(signer, peer_public_key, raw):
+    """
+    Verify + deserialise a signed Raft message.
+    Returns the original message object, or None on failure.
+    """
+    if len(raw) < 3:
+        print(Fore.RED + '[VERIFY] Message too short to contain header')
+        return None
+
+    flags, sig_len = struct.unpack('!BH', raw[:3])
+
+    if len(raw) < 3 + sig_len:
+        print(Fore.RED + '[VERIFY] Message truncated inside signature')
+        return None
+
+    signature = raw[3:3 + sig_len]
+    payload   = raw[3 + sig_len:]
+
+    if peer_public_key is not None:
+        if sig_len == 0:
+            print(Fore.RED + '[VERIFY] No signature present but key exists — dropping!')
+            return None
+        if not signer.validate(peer_public_key, payload, signature):
+            print(Fore.RED + '[VERIFY] Signature FAILED — dropping message!')
+            return None
+    else:
+        print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
+
+    if flags & _FLAG_WAS_DICT:
+        try:
+            return pickle.loads(payload)
+        except Exception as e:
+            print(Fore.RED + f'[VERIFY] pickle.loads failed: {e}')
+            return None
+
+    return payload
+
+
 class TCPTransport(Transport):
     def __init__(self, syncObj, selfNode, otherNodes):
         super(TCPTransport, self).__init__(syncObj, selfNode, otherNodes)
@@ -116,6 +192,14 @@ class TCPTransport(Transport):
         self._send_random_sleep_duration = 0
         self._peerSigningKeys = {}  # node address -> public key, stored after handshake
 
+        # ── sign/verify counters ─────────────────────────────────────────────
+        self._dbg_send_total    = 0
+        self._dbg_send_signed   = 0
+        self._dbg_recv_total    = 0
+        self._dbg_recv_verified = 0
+        self._dbg_recv_dropped  = 0
+        # ────────────────────────────────────────────────────────────────────
+
         self._syncObj.addOnTickCallback(self._onTick)
 
         for node in otherNodes:
@@ -125,6 +209,12 @@ class TCPTransport(Transport):
             self._createServer()
         else:
             self._ready = True
+
+    def _dbg_print_stats(self):
+        print(Fore.CYAN + '[SIGN STATS] ──────────────────────────────────────────')
+        print(Fore.CYAN + f'  SEND  total={self._dbg_send_total}  signed={self._dbg_send_signed}')
+        print(Fore.CYAN + f'  RECV  total={self._dbg_recv_total}  verified={self._dbg_recv_verified}  dropped={self._dbg_recv_dropped}')
+        print(Fore.CYAN + '────────────────────────────────────────────────────────')
 
     def _connToNode(self, conn):
         for node in self._connections:
@@ -197,11 +287,11 @@ class TCPTransport(Transport):
         # Handshake — unencrypted, with certificate and signing key exchange
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
-            peer_cert = message.get('certificate')
-            peer_address = message.get('address')
+            peer_cert      = message.get('certificate')
+            peer_address   = message.get('address')
 
             if peer_cert and peer_node_name:
-                signature = message.get('signature')
+                signature      = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
                 if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
@@ -209,8 +299,6 @@ class TCPTransport(Transport):
                     conn.disconnect()
                     return
                 print(Fore.GREEN + f'Success: {peer_node_name} Authenticated!')
-
-                # Store peer signing key for per-message verification
                 self._peerSigningKeys[peer_address] = peer_public_key
 
             if peer_cert and peer_node_name:
@@ -247,7 +335,6 @@ class TCPTransport(Transport):
         if self._syncObj.encryptor:
             conn.encryptor = self._syncObj.encryptor
 
-        # Switch to per-message verified handler
         conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
 
         if not readonly:
@@ -294,7 +381,7 @@ class TCPTransport(Transport):
     def _sendSelfAddress(self, conn):
         """Send handshake unencrypted — conn.encryptor must be None when called."""
         node_name = getattr(self._syncObj.conf, 'node_name', None)
-        our_cert = None
+        our_cert  = None
         signing_public_key = None
 
         try:
@@ -304,26 +391,18 @@ class TCPTransport(Transport):
             signing_public_key = None
 
         try:
-            if node_name:
-                with open(f'{node_name}_certificate.pem', 'r') as f:
-                    our_cert = f.read()
-            else:
-                with open('certificate.pem', 'r') as f:
-                    our_cert = f.read()
+            cert_file = f'{node_name}_certificate.pem' if node_name else 'certificate.pem'
+            with open(cert_file, 'r') as f:
+                our_cert = f.read()
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
         signature = self.signer.sign(our_cert.encode())
 
-        if self._selfIsReadonlyNode:
-            conn.send({'type': 'handshake', 'node_name': node_name, 'address': 'readonly',
-                       'certificate': our_cert, 'signature': signature,
-                       'signing_public_key': signing_public_key})
-        else:
-            conn.send({'type': 'handshake', 'node_name': node_name,
-                       'address': self._selfNode.address,
-                       'certificate': our_cert, 'signature': signature,
-                       'signing_public_key': signing_public_key})
+        addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
+        conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
+                   'certificate': our_cert, 'signature': signature,
+                   'signing_public_key': signing_public_key})
 
     def _onOutgoingConnected(self, conn):
         conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
@@ -332,9 +411,9 @@ class TCPTransport(Transport):
     def _onOutgoingHandshakeResponse(self, conn, message):
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
-            peer_cert = message.get('certificate')
-            peer_address = message.get('address')
-            signature = message.get('signature')
+            peer_cert      = message.get('certificate')
+            peer_address   = message.get('address')
+            signature      = message.get('signature')
 
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
@@ -344,8 +423,6 @@ class TCPTransport(Transport):
                     conn.disconnect()
                     return
                 print(Fore.GREEN + f'Success: {peer_node_name} Digital Signature Authenticated!')
-
-                # Store peer signing key for per-message verification
                 self._peerSigningKeys[peer_address] = peer_public_key
 
                 try:
@@ -357,44 +434,42 @@ class TCPTransport(Transport):
                 except Exception as e:
                     print(Fore.YELLOW + f"[OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
             else:
-                print(Fore.YELLOW + f"[OUTGOING] Handshake missing certificate or node_name")
+                print(Fore.YELLOW + "[OUTGOING] Handshake missing certificate or node_name")
 
         if self._syncObj.encryptor:
             conn.encryptor = self._syncObj.encryptor
 
         node = self._connToNode(conn)
-        # Switch to per-message verified handler
         conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
         self._onNodeConnected(node)
 
     def _onVerifiedMessageReceived(self, node, message):
         """
         Called for every post-handshake message.
-        Expects message to be bytes: [2-byte sig len][signature][payload]
-        Verifies signature before passing payload up to Raft.
+        The encryptor (if active) decrypts before this callback fires,
+        so `message` is always bytes containing our signed wrapper.
         """
-        try:
-            if isinstance(message, bytes) and len(message) > 2:
-                sig_len = struct.unpack('!H', message[:2])[0]
-                signature = message[2:2 + sig_len]
-                payload = message[2 + sig_len:]
+        self._dbg_recv_total += 1
 
-                node_addr = getattr(node, 'address', None)
-                peer_public_key = self._peerSigningKeys.get(node_addr)
+        if not isinstance(message, bytes):
+            print(Fore.RED + f'[VERIFY] Unexpected non-bytes type={type(message).__name__} — dropping!')
+            self._dbg_recv_dropped += 1
+            return
 
-                if peer_public_key is not None:
-                    if not self.signer.validate(peer_public_key, payload, signature):
-                        print(Fore.RED + f'[VERIFY] Signature failed from {node_addr} — dropping!')
-                        return
-                    self._onMessageReceived(node, payload)
-                else:
-                    print(Fore.YELLOW + f'[VERIFY] No signing key for {node_addr} — passing through unverified')
-                    self._onMessageReceived(node, payload)
-            else:
-                self._onMessageReceived(node, message)
+        node_addr       = getattr(node, 'address', None)
+        peer_public_key = self._peerSigningKeys.get(node_addr)
 
-        except Exception as e:
-            print(Fore.RED + f'[VERIFY] Error verifying message from {node}: {e}')
+        result = _unwrap_and_verify(self.signer, peer_public_key, message)
+        if result is None:
+            self._dbg_recv_dropped += 1
+            return
+
+        self._dbg_recv_verified += 1
+
+        if self._dbg_recv_total % 50 == 0:
+            self._dbg_print_stats()
+
+        self._onMessageReceived(node, result)
 
     def _onDisconnected(self, conn):
         self._unknownConnections.discard(conn)
@@ -440,42 +515,46 @@ class TCPTransport(Transport):
         else:
             self._readonlyNodes.discard(node)
         self._lastConnectAttempt.pop(node, None)
-        # Clean up stored signing key on disconnect
         node_addr = getattr(node, 'address', None)
         if node_addr and node_addr in self._peerSigningKeys:
             del self._peerSigningKeys[node_addr]
 
     def send(self, node, message):
         """
-        Sign every outgoing byte message.
-        Format: [2-byte sig len][signature][message]
+        Sign every outgoing Raft message (dict or bytes) before the encryptor
+        sees it.  Handshake dicts are exempt — they travel unsigned/unencrypted.
+
+        Wire format for signed messages:
+            [ 1-byte flags ][ 2-byte sig_len ][ signature ][ payload ]
         """
         if node not in self._connections or self._connections[node].state != CONNECTION_STATE.CONNECTED:
             return False
         if self._send_random_sleep_duration:
             time.sleep(random.random() * self._send_random_sleep_duration)
 
+        # Handshake messages: send raw, no signing wrapper
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            self._connections[node].send(message)
+            return self._connections[node].state == CONNECTION_STATE.CONNECTED
+
+        # All other Raft traffic: sign + wrap
+        self._dbg_send_total += 1
         try:
-            if isinstance(message, bytes):
-                signature = self.signer.sign(message)
-                if signature is not None:
-                    signed_message = struct.pack('!H', len(signature)) + signature + message
-                else:
-                    print(Fore.YELLOW + '[SIGN] Signing failed — sending without signature')
-                    signed_message = struct.pack('!H', 0) + message
-            else:
-                # Non-bytes messages (handshake dicts etc) sent as-is
-                signed_message = message
+            signed_message = _wrap_and_sign(self.signer, message)
+            self._dbg_send_signed += 1
         except Exception as e:
             print(Fore.RED + f'[SIGN] Error signing message: {e}')
-            signed_message = message
+            signed_message = message  # last-resort fallback
+
+        if self._dbg_send_total % 50 == 0:
+            self._dbg_print_stats()
 
         self._connections[node].send(signed_message)
-        if self._connections[node].state != CONNECTION_STATE.CONNECTED:
-            return False
-        return True
+        return self._connections[node].state == CONNECTION_STATE.CONNECTED
 
     def destroy(self):
+        print(Fore.CYAN + '[SIGN] destroy() — final stats:')
+        self._dbg_print_stats()
         self.setOnMessageReceivedCallback(None)
         self.setOnNodeConnectedCallback(None)
         self.setOnNodeDisconnectedCallback(None)
