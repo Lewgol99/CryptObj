@@ -11,7 +11,6 @@ from request import get_ca_status, submit_csr_to_ca # import from our server req
 from encryptor import AsymmetricEncryptor # import from our encryptor file 
 from digital_signature import DigitalSignature # import digital signature
 
-
 if __name__ == '__main__':
     
     with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
@@ -61,8 +60,7 @@ if __name__ == '__main__':
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
-            conf.password = "SecureRaft2026"
-            conf.encryptor = True
+            conf.password = "SecureRaft2026"  # triggers pysyncobj to call getEncryptor() from encryptor.py
             conf.node_name = node_name
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
@@ -116,8 +114,7 @@ if __name__ == '__main__':
 
     def onAdd(res, err, cnt):
         status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
-        time.sleep(3) # use time lib to slow down system for visibility.
-        print(f"onAdd seq={cnt}  result={res}  {status}") 
+        print(f"onAdd seq={cnt}  result={res}  {status}")
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
