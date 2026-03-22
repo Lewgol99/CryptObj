@@ -42,7 +42,7 @@ for i in range(NUM_NODES):
     router.joinNetwork('ix100', f'10.100.0.{asn % 256}')
     router.addSoftware('git')
     router.addSoftware('python3')
-    router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git /software')
+    router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
 
 ###############################################################################
 # Peering
