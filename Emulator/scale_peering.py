@@ -43,6 +43,7 @@ for i in range(NUM_NODES):
     router.addSoftware('git')
     router.addSoftware('python3')
     router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
+    router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
 
 ###############################################################################
 # Peering
