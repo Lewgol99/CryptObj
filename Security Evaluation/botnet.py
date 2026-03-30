@@ -14,6 +14,10 @@ from seedemu.services import BotnetService, BotnetClientService
 
 ###############################################################################
 
+GIT_USERNAME = 'Lewgol99'
+GIT_TOKEN = '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'
+GIT_REPO  = 'https://github.com/Lewgol99/PySyncCryptObj.git'
+
 # Emulator Setup
 emu = Emulator()
 base = Base()
