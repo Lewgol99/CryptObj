@@ -57,10 +57,10 @@ as166.createNetwork('net9') # create net 9
 as166.createNetwork('net10') # create net 10
 as166.createHost('host0').joinNetwork('net0')
 router166 = as166.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
-router.addSoftware('git')
-router.addSoftware('python3')
-router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
-router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
+router166.addSoftware('git')
+router166.addSoftware('python3')
+router166.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
+router166.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
 router166.joinNetwork('net0') # join net 0
 router166.joinNetwork('net1') # join net 1
 router166.joinNetwork('net2') # join net 2
@@ -73,8 +73,6 @@ router166.joinNetwork('net8') # join net 8
 router166.joinNetwork('net9') # join net 9
 router166.joinNetwork('net10') # join net 10
 router166.joinNetwork('ix100', '10.100.0.166') # TX-PBAC Node
-router166.addSoftware('git')
-router166.addSoftware('python3')
 
 # AS176
 as176 = base.createAutonomousSystem(176)
@@ -90,10 +88,10 @@ as176.createNetwork('net8') # create net 8
 as176.createNetwork('net9') # create net 9
 as176.createHost('host0').joinNetwork('net0')
 router176 = as176.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
-router.addSoftware('git')
-router.addSoftware('python3')
-router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
-router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
+router176.addSoftware('git')
+router176.addSoftware('python3')
+router176.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
+router176.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
 router176.joinNetwork('net0') # join net 0
 router176.joinNetwork('net1') # join net 1
 router176.joinNetwork('net2') # join net 2
@@ -122,10 +120,10 @@ as186.createNetwork('net8') # create net 8
 as186.createNetwork('net9') # create net 9
 as186.createHost('host0').joinNetwork('net0')
 router186 = as186.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
-router.addSoftware('git')
-router.addSoftware('python3')
-router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
-router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
+router186.addSoftware('git')
+router186.addSoftware('python3')
+router186.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
+router186.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
 router186.joinNetwork('net0') # join net 0
 router186.joinNetwork('net1') # join net 1
 router186.joinNetwork('net2') # join net 2
@@ -154,10 +152,10 @@ as196.createNetwork('net8') # create net 8
 as196.createNetwork('net9') # create net 9
 as196.createHost('host0').joinNetwork('net0')
 router196 = as196.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
-router.addSoftware('git')
-router.addSoftware('python3')
-router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
-router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
+router196.addSoftware('git')
+router196.addSoftware('python3')
+router196.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
+router196.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
 router196.joinNetwork('net0') # join net 0
 router196.joinNetwork('net1') # join net 1
 router196.joinNetwork('net2') # join net 2
