@@ -53,7 +53,7 @@ python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cip
 ![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)
 
 ```python
-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
+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
 ```
 
 ## License
