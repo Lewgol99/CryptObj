@@ -1,0 +1,11 @@
+web3==4.9.2
+lxml
+pysyncobj
+watchdog
+requests
+dill
+psutil
+colorama
+pandas
+cryptography
+flask
