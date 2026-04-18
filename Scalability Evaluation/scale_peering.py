@@ -53,8 +53,8 @@ for i in range(NUM_NODES):
     router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
     router.addBuildCommand(f'chmod -R 777 CryptObj')
     router.addBuildCommand(f'python3 -c "import json; data={nodes}; open(\'CryptObj/scale_nodes.json\',\'w\').write(json.dumps(data, indent=4))"')
-    router.addBuildCommand('apt-get install -y lftp python3-pip')
-    router.addBuildCommand('pip3 install -r CryptObj/requirements.txt')
+    router.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
+    router.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
 ###############################################################################
 # Peering
 ebgp.addRsPeers(100, [4])
