@@ -19,53 +19,46 @@ ebgp    = Ebgp()
 ibgp    = Ibgp()
 ospf    = Ospf()
 web     = WebService()
-
 ###############################################################################
 # Internet Exchanges
 ix100 = base.createInternetExchange(100)
 ix101 = base.createInternetExchange(101)
 ix100.getPeeringLan().setDisplayName('Bank-100')
 ix101.getPeeringLan().setDisplayName('Bank-101')
-
 ###############################################################################
 # Tier 1
 Makers.makeTransitAs(base, 4, [100, 101], [(101, 100)])
-
 ###############################################################################
 # Build nodes dict first with safe sequential IPs
 nodes = {}
 for i in range(NUM_NODES):
     asn = 166 + i
-    offset = 10 + i  # start from 10.100.0.10 to avoid conflicts
+    offset = 10 + i
     ip = f'10.100.{offset // 256}.{offset % 256}'
     nodes[f'node{i+1}'] = {'addr': ip, 'port': 45025}
-
 nodes_json = json.dumps(nodes)
-
 ###############################################################################
 # Dynamically create branch ASes
 branch_asns = []
-
 for i in range(NUM_NODES):
     asn = 166 + i
     branch_asns.append(asn)
     offset = 10 + i
     ip = f'10.100.{offset // 256}.{offset % 256}'
-
     asobj  = base.createAutonomousSystem(asn)
     router = asobj.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
     router.joinNetwork('ix100', ip)
     router.addSoftware('git')
     router.addSoftware('python3')
-    router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/PySyncCryptObj.git')
-    router.addBuildCommand(f'chmod -R 777 PySyncCryptObj')
-    router.addBuildCommand(f'python3 -c "import json; data={nodes}; open(\'PySyncCryptObj/scale_nodes.json\',\'w\').write(json.dumps(data, indent=4))"')
-
+    router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+    router.addBuildCommand(f'chmod -R 777 CryptObj')
+    router.addBuildCommand(f'python3 -c "import json; data={nodes}; open(\'CryptObj/scale_nodes.json\',\'w\').write(json.dumps(data, indent=4))"')
+    router.addBuildCommand('apt-get install -y lftp python3-pip')
+    router.addBuildCommand('pip3 install -r CryptObj/requirements.txt')
 ###############################################################################
 # Peering
 ebgp.addRsPeers(100, [4])
 ebgp.addPrivatePeerings(100, [4], branch_asns, PeerRelationship.Provider)
-
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
