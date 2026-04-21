@@ -3,7 +3,7 @@ import pandas
 
 class DSThroughputMonitor:
     def __init__(self, max_measurements=1000):
-        self._results_list = []  # Fixed: instance level not class level
+        self._results_list = [] 
         self.start = None
         self.stop = None
         self.max_measurements = max_measurements
