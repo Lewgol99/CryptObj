@@ -7,11 +7,12 @@ from seedemu.services import WebService
 from seedemu.core import Emulator
 from seedemu.compiler import Docker
 
-NUM_NODES    = 50
+NUM_NODES    = 100
 GIT_USERNAME = 'Lewgol99'
 GIT_TOKEN    = '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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
 
+###############################################################################
 emu     = Emulator()
 base    = Base()
 routing = Routing()
@@ -32,38 +33,50 @@ ix101.getPeeringLan().setDisplayName('Bank-101')
 Makers.makeTransitAs(base, 4, [100, 101], [(101, 100)])
 
 ###############################################################################
-# Build nodes dict first with safe sequential IPs
+# 4 ASes on ix100, all under ASN 254
+# Each AS gets one network, 25 nodes distributed across them
+
+NETWORK_ASES = [166, 167, 168, 169]
+NODES_PER_NET = NUM_NODES // len(NETWORK_ASES)  # 25 each
+
+as_objects = {}
+for asn in NETWORK_ASES:
+    asobj = base.createAutonomousSystem(asn)
+    asobj.createNetwork('net0')
+    as_objects[asn] = asobj
+
+    router = asobj.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
+    router.joinNetwork('net0')
+    router.joinNetwork('ix100')  # ASN is used as IP offset, all <= 254 so fine
+
+###############################################################################
+# Build nodes json — each node gets an IP from its AS network
 nodes = {}
 for i in range(NUM_NODES):
-    asn = 166 + i
-    offset = 10 + i
-    ip = f'10.100.{offset // 256}.{offset % 256}'
-    nodes[f'node{i+1}'] = {'addr': ip, 'port': 45025}
+    asn = NETWORK_ASES[i % len(NETWORK_ASES)]
+    nodes[f'node{i+1}'] = {'asn': asn, 'port': 45025}
 nodes_json = json.dumps(nodes)
 
 ###############################################################################
-# Dynamically create branch ASes
-branch_asns = []
+# Create 25 hosts per AS network, each clones repo and installs requirements
 for i in range(NUM_NODES):
-    asn = 166 + i
-    branch_asns.append(asn)
-    offset = 10 + i
-    ip = f'10.100.{offset // 256}.{offset % 256}'
-    asobj  = base.createAutonomousSystem(asn)
-    router = asobj.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
-    router.joinNetwork('ix100', ip)
-    router.addSoftware('git')
-    router.addSoftware('python3')
-    router.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
-    router.addBuildCommand(f'chmod -R 777 CryptObj')
-    router.addBuildCommand(f'python3 -c "import json; data={nodes}; open(\'CryptObj/scale_nodes.json\',\'w\').write(json.dumps(data, indent=4))"')
-    router.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
-    router.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
+    asn   = NETWORK_ASES[i % len(NETWORK_ASES)]
+    asobj = as_objects[asn]
+    name  = f'node{i:03d}'
+
+    host = asobj.createHost(name).joinNetwork('net0')
+    host.addSoftware('git')
+    host.addSoftware('python3')
+    host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+    host.addBuildCommand(f'chmod -R 777 CryptObj')
+    host.addBuildCommand(f'python3 -c "import json; open(\'CryptObj/scale_nodes.json\',\'w\').write(\'{nodes_json}\')"')
+    host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
+    host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
 
 ###############################################################################
 # Peering
 ebgp.addRsPeers(100, [4])
-ebgp.addPrivatePeerings(100, [4], branch_asns, PeerRelationship.Provider)
+ebgp.addPrivatePeerings(100, [4], NETWORK_ASES, PeerRelationship.Provider)
 
 ###############################################################################
 emu.addLayer(base)
