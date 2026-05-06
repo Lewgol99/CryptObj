@@ -7,7 +7,7 @@ from seedemu.services import WebService
 from seedemu.core import Emulator
 from seedemu.compiler import Docker
 
-NUM_NODES    = 100
+NUM_NODES    = 500
 GIT_USERNAME = 'Lewgol99'
 GIT_TOKEN    = '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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
@@ -36,8 +36,8 @@ Makers.makeTransitAs(base, 4, [100, 101], [(101, 100)])
 # 4 ASes on ix100, all under ASN 254
 # Each AS gets one network, 25 nodes distributed across them
 
-NETWORK_ASES = [166, 167, 168, 169]
-NODES_PER_NET = NUM_NODES // len(NETWORK_ASES)  # 25 each
+NETWORK_ASES = [166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182]
+NODES_PER_NET = NUM_NODES // len(NETWORK_ASES)
 
 as_objects = {}
 for asn in NETWORK_ASES:
