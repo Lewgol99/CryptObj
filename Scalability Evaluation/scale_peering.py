@@ -36,7 +36,7 @@ Makers.makeTransitAs(base, 4, [100, 101], [(101, 100)])
 # 4 ASes on ix100, all under ASN 254
 # Each AS gets one network, 25 nodes distributed across them
 
-NETWORK_ASES = [166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182]
+NETWORK_ASES = [166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183]
 NODES_PER_NET = NUM_NODES // len(NETWORK_ASES)
 
 as_objects = {}
@@ -66,12 +66,14 @@ for i in range(NUM_NODES):
 
     host = asobj.createHost(name).joinNetwork('net0')
     host.addSoftware('git')
-    host.addSoftware('python3')
+    #host.addSoftware('python3')
     host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
     host.addBuildCommand(f'chmod -R 777 CryptObj')
-    host.addBuildCommand(f'python3 -c "import json; open(\'CryptObj/scale_nodes.json\',\'w\').write(\'{nodes_json}\')"')
+    #host.addBuildCommand(f'python3 -c "import json; open(\'CryptObj/scale_nodes.json\',\'w\').write(\'{nodes_json}\')"')
     host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
+    host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
+    host.addBuildCommand('cp CryptObj/src/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 
 ###############################################################################
 # Peering
