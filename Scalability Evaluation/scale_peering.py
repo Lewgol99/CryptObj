@@ -66,10 +66,10 @@ for i in range(NUM_NODES):
 
     host = asobj.createHost(name).joinNetwork('net0')
     host.addSoftware('git')
-    #host.addSoftware('python3')
+    host.addSoftware('python3')
     host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
     host.addBuildCommand(f'chmod -R 777 CryptObj')
-    #host.addBuildCommand(f'python3 -c "import json; open(\'CryptObj/scale_nodes.json\',\'w\').write(\'{nodes_json}\')"')
+    host.addBuildCommand(f'python3 -c "import json; open(\'CryptObj/scale_nodes.json\',\'w\').write(\'{nodes_json}\')"')
     host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
     host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
