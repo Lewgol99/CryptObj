@@ -45,7 +45,7 @@ python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cip
 
 
 ## Publications
-![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)
+[![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)](https://scholar.google.com/citations?user=hA6XGAQAAAAJ&hl=en)
 
 ```python
 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
