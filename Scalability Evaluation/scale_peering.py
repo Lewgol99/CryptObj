@@ -7,7 +7,7 @@ from seedemu.services import WebService
 from seedemu.core import Emulator
 from seedemu.compiler import Docker
 
-NUM_NODES    = 500
+NUM_NODES    = 50
 GIT_USERNAME = 'Lewgol99'
 GIT_TOKEN    = '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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
@@ -20,24 +20,23 @@ ebgp    = Ebgp()
 ibgp    = Ibgp()
 ospf    = Ospf()
 web     = WebService()
-
 ###############################################################################
 as166 = base.createAutonomousSystem(166)
 aac = AddressAssignmentConstraint(
-    hostStart=10, hostEnd=60000, hostStep=1,
-    dhcpStart=60001, dhcpEnd=60100,
-    routerStart=65000, routerEnd=60200, routerStep=-1
+hostStart=10, hostEnd=60000, hostStep=1,
+dhcpStart=60001, dhcpEnd=60100,
+routerStart=65000, routerEnd=60200, routerStep=-1
 )
 as166.createNetwork('net0', prefix='10.166.0.0/16', aac=aac)
 as166.createRouter('router0').joinNetwork('net0')
-
 ###############################################################################
 # Build nodes json
 nodes = {}
 for i in range(NUM_NODES):
-    nodes[f'node{i+1}'] = {'asn': 166, 'port': 45025}
+    nodes[f'node{i+1}'] = {'addr': f'10.166.{i // 254}.{(i % 254) + 1}', 'port': 45025}
 nodes_json = json.dumps(nodes)
-
+with open('scale_nodes.json', 'w') as f:
+    f.write(nodes_json)
 ###############################################################################
 # CA node — static IP on net0
 ca_host = (as166
@@ -53,7 +52,6 @@ ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.tx
 ca_host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
 ca_host.addBuildCommand('cp CryptObj/src/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 ca_host.appendStartCommand('python3 /CryptObj/CA/ca_server.py')
-
 ###############################################################################
 # All nodes on net0
 for i in range(NUM_NODES):
@@ -68,7 +66,6 @@ for i in range(NUM_NODES):
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
     host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
     host.addBuildCommand('cp CryptObj/src/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
-
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
