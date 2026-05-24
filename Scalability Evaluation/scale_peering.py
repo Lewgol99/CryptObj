@@ -35,7 +35,7 @@ import base64
 
 nodes = {}
 for i in range(NUM_NODES):
-    nodes[f'node{i+1}'] = {'addr': f'10.166.{i // 254}.{(i % 254) + 1}', 'port': 45025}
+    nodes[f'node{i+1}'] = {'addr': f'10.166.{i // 254}.{i + 11}', 'port': 45025}
 
 nodes_json = json.dumps(nodes)
 nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
