@@ -60,7 +60,7 @@ ca_host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3
 ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
 ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
 ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
-ca_host.appendStartCommand('python3 /CryptObj/ca_server.py')
+ca_host.appendStartCommand('cd /CryptObj && python3 /CryptObj/ca_server.py')
 ###############################################################################
 # All nodes on net0
 for i in range(NUM_NODES):
@@ -76,6 +76,7 @@ for i in range(NUM_NODES):
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
     host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
     host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
+    host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/scale_cryptobj.py node{i+1} RSA 2048 AES')
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
