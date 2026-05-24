@@ -53,13 +53,14 @@ ca_host = (as166
 ca_host.addSoftware('git')
 ca_host.addSoftware('python3')
 ca_host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+ca_host.addBuildCommand('find CryptObj -mindepth 2 -type f -exec mv -n {} CryptObj/ \\; || true')
 ca_host.addBuildCommand('chmod -R 777 CryptObj')
 ca_host.addBuildCommand(build_cmd)
 ca_host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
-ca_host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
-ca_host.addBuildCommand('cp CryptObj/src/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
-ca_host.appendStartCommand('python3 /CryptObj/CA/ca_server.py')
+ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
+ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
+ca_host.appendStartCommand('python3 /CryptObj/ca_server.py')
 ###############################################################################
 # All nodes on net0
 for i in range(NUM_NODES):
@@ -68,12 +69,13 @@ for i in range(NUM_NODES):
     host.addSoftware('git')
     host.addSoftware('python3')
     host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+    host.addBuildCommand('find CryptObj -mindepth 2 -type f -exec mv -n {} CryptObj/ \\; || true')
     host.addBuildCommand('chmod -R 777 CryptObj')
     host.addBuildCommand(build_cmd)
     host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
-    host.addBuildCommand('cp CryptObj/src/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
-    host.addBuildCommand('cp CryptObj/src/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
+    host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
+    host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
