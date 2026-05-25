@@ -34,8 +34,8 @@ as166.createRouter('router0').joinNetwork('net0')
 import base64
 
 nodes = {}
-for i in range(NUM_NODES):
-    nodes[f'node{i+1}'] = {'addr': f'10.166.{i // 254}.{i + 11}', 'port': 45025}
+for i in range(1, NUM_NODES + 1):
+    nodes[f'node{i}'] = {'addr': f'10.166.{(i-1) // 254}.{i + 9}', 'port': 45025}
 
 nodes_json = json.dumps(nodes)
 nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
@@ -63,7 +63,7 @@ ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-
 ca_host.appendStartCommand('cd /CryptObj && python3 /CryptObj/ca_server.py')
 ###############################################################################
 # All nodes on net0
-for i in range(NUM_NODES):
+for i in range(1, NUM_NODES + 1):
     name = f'node{i:03d}'
     host = as166.createHost(name).joinNetwork('net0')
     host.addSoftware('git')
@@ -76,7 +76,7 @@ for i in range(NUM_NODES):
     host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
     host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
     host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
-    host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/scale_cryptobj.py node{i+1} RSA 2048 AES')
+    host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/scale_cryptobj.py node{i} RSA 2048 AES')
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
