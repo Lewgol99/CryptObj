@@ -21,29 +21,34 @@ ibgp    = Ibgp()
 ospf    = Ospf()
 web     = WebService()
 ###############################################################################
+# Create Internet Exchange
+ix100 = base.createInternetExchange(100)
+Makers.makeTransitAs(base, 4, [100], [])
+###############################################################################
 as166 = base.createAutonomousSystem(166)
 aac = AddressAssignmentConstraint(
-hostStart=10, hostEnd=60000, hostStep=1,
-dhcpStart=60001, dhcpEnd=60100,
-routerStart=65000, routerEnd=60200, routerStep=-1
+    hostStart=10, hostEnd=60000, hostStep=1,
+    dhcpStart=60001, dhcpEnd=60100,
+    routerStart=65000, routerEnd=60200, routerStep=-1
 )
 as166.createNetwork('net0', prefix='10.166.0.0/16', aac=aac)
-as166.createRouter('router0').joinNetwork('net0')
+router0 = as166.createRealWorldRouter('router0', prefixes=['0.0.0.0/1', '128.0.0.0/1'])
+router0.joinNetwork('ix100', '10.100.0.166')
+router0.joinNetwork('net0', '10.166.0.2')
+###############################################################################
+ebgp.addRsPeers(100, [4])
+ebgp.addPrivatePeerings(100, [4], [166], PeerRelationship.Provider)
 ###############################################################################
 # Build nodes json
 import base64
-
 nodes = {}
 for i in range(1, NUM_NODES + 1):
     nodes[f'node{i}'] = {'addr': f'10.166.{(i-1) // 254}.{i + 9}', 'port': 45025}
-
 nodes_json = json.dumps(nodes)
 nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
-
 # Write pretty local copy
 with open('scale_nodes.json', 'w') as f:
     json.dump(nodes, f, indent=4)
-
 build_cmd = f"python3 -c \"import json,base64; f=open('/CryptObj/scale_nodes.json','w'); json.dump(json.loads(base64.b64decode('{nodes_b64}').decode()), f, indent=4); f.close()\""
 ###############################################################################
 # CA node — static IP on net0
