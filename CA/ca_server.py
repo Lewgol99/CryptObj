@@ -38,3 +38,6 @@ def sign_csr():
                 print(f'✓ Stored {node_name}_certificate.pem')
                 return jsonify({'certificate': cert_pem}), 200
     return jsonify({'Error': 'Failed'}), 500
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, threaded=True)
