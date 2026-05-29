@@ -10,7 +10,7 @@ CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 with open('nodes.json', 'r') as file:
     nodes = json.load(file)
 
-def submit_csr_to_ca(node_name, max_retries=10, delay=5):
+def submit_csr_to_ca(node_name, max_retries=30, delay=10):
     for attempt in range(max_retries):
         try:
             with open('csr.pem', 'r') as f:
