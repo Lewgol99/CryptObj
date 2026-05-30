@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+import threading
 from colorama import Fore
 
 with open('server_url.json', 'r') as file:
@@ -52,30 +53,41 @@ def submit_csr_to_ca(node_name, max_retries=30, delay=10):
     print(Fore.RED + f'Error: Gave up after {max_retries} attempts for {node_name}')
     return False
 
-def fetch_all_certificates(own_node_name, max_retries=10, delay=5):
+def fetch_one_certificate(name, max_retries=30, delay=5):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(f'{CA_URL}/get_certificate/{name}', timeout=5)
+            if response.status_code == 200:
+                cert_pem = response.json().get('certificate')
+                if cert_pem:
+                    with open(f'{name}_certificate.pem', 'w') as f:
+                        f.write(cert_pem)
+                    print(Fore.GREEN + f'✓ Fetched {name}_certificate.pem')
+                    return True
+                else:
+                    print(Fore.YELLOW + f'No certificate yet for {name}, retrying in {delay}s...')
+                    time.sleep(delay)
+            else:
+                print(Fore.YELLOW + f'Could not fetch cert for {name} (status {response.status_code}), retrying...')
+                time.sleep(delay)
+        except Exception as e:
+            print(Fore.RED + f'Error fetching cert for {name}: {e}')
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+    return False
+
+def fetch_all_certificates(own_node_name):
+    print(Fore.CYAN + 'Fetching all certificates in parallel...')
+    threads = []
     for name in nodes:
         if name == own_node_name:
             continue
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{CA_URL}/get_certificate/{name}')
-                if response.status_code == 200:
-                    cert_pem = response.json().get('certificate')
-                    if cert_pem:
-                        with open(f'{name}_certificate.pem', 'w') as f:
-                            f.write(cert_pem)
-                        print(Fore.GREEN + f'Fetched and saved {name}_certificate.pem')
-                        break
-                    else:
-                        print(Fore.YELLOW + f'No certificate yet for {name}, retrying in {delay}s...')
-                        time.sleep(delay)
-                else:
-                    print(Fore.YELLOW + f'Could not fetch cert for {name} (status {response.status_code}), retrying...')
-                    time.sleep(delay)
-            except Exception as e:
-                print(Fore.RED + f'Error fetching cert for {name}: {e}')
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
+        t = threading.Thread(target=fetch_one_certificate, args=(name,))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
+    print(Fore.GREEN + 'All certificates fetched!')
 
 def get_ca_status():
     try:
