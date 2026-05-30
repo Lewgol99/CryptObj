@@ -10,12 +10,27 @@ CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 with open('nodes.json', 'r') as file:
     nodes = json.load(file)
 
+def wait_for_ca(max_retries=30, delay=5):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(CA_URL, timeout=5)
+            if response.status_code == 200:
+                print(Fore.GREEN + 'CA is ready!')
+                return True
+        except Exception as e:
+            print(Fore.YELLOW + f'Waiting for CA... ({attempt+1}/{max_retries})')
+            time.sleep(delay)
+    print(Fore.RED + 'Error: CA never became ready!')
+    return False
+
 def submit_csr_to_ca(node_name, max_retries=30, delay=10):
+    if not wait_for_ca():
+        return False
     for attempt in range(max_retries):
         try:
             with open('csr.pem', 'r') as f:
                 csr_pem = f.read()
-            print(Fore.CYAN + f'📤 Submitting CSR for: {node_name} (attempt {attempt+1}/{max_retries})')
+            print(Fore.CYAN + f'Submitting CSR for: {node_name} (attempt {attempt+1}/{max_retries})')
             response = requests.post(
                 f'{CA_URL}/sign_csr',
                 json={
@@ -49,13 +64,13 @@ def fetch_all_certificates(own_node_name, max_retries=10, delay=5):
                     if cert_pem:
                         with open(f'{name}_certificate.pem', 'w') as f:
                             f.write(cert_pem)
-                        print(Fore.GREEN + f'✓ Fetched and saved {name}_certificate.pem')
+                        print(Fore.GREEN + f'Fetched and saved {name}_certificate.pem')
                         break
                     else:
-                        print(Fore.YELLOW + f'⚠ No certificate yet for {name}, retrying in {delay}s...')
+                        print(Fore.YELLOW + f'No certificate yet for {name}, retrying in {delay}s...')
                         time.sleep(delay)
                 else:
-                    print(Fore.YELLOW + f'⚠ Could not fetch cert for {name} (status {response.status_code}), retrying...')
+                    print(Fore.YELLOW + f'Could not fetch cert for {name} (status {response.status_code}), retrying...')
                     time.sleep(delay)
             except Exception as e:
                 print(Fore.RED + f'Error fetching cert for {name}: {e}')
