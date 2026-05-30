@@ -9,3 +9,4 @@ colorama
 pandas
 cryptography
 flask
+gunicorn
