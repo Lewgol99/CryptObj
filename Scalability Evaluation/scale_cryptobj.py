@@ -13,7 +13,7 @@ from digital_signature import DigitalSignature
 
 if __name__ == '__main__':
     
-    with open('scale_nodes.json', 'r') as file:
+    with open('nodes.json', 'r') as file:
         nodes = json.load(file)
 
     with open('asymmetric_ciphers.json', 'r') as file:
