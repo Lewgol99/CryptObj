@@ -8,7 +8,7 @@ with open('server_url.json', 'r') as file:
     server = json.load(file)
 CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 
-with open('nodes.json', 'r') as file:
+with open('scale_nodes.json', 'r') as file:
     nodes = json.load(file)
 
 def wait_for_ca(max_retries=30, delay=5):
