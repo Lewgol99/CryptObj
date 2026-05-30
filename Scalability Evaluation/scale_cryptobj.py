@@ -1,6 +1,7 @@
 import sys
 import time 
 import json
+import threading
 from colorama import Fore, Style
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
@@ -168,7 +169,8 @@ if __name__ == '__main__':
             pki.generate_ecc_keys(curve_name)
             pki.generate_csr()
             result = submit_csr_to_ca(node_name)
-        fetch_all_certificates(node_name)
+        print(Fore.CYAN + 'Fetching all certificates in background...')
+        threading.Thread(target=fetch_all_certificates, args=(node_name,), daemon=True).start()
 
     if not os.path.exists('signing_private_key.pem'):
         print(Fore.YELLOW + 'No signing key found, generating...')
