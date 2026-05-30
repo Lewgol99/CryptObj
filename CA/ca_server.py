@@ -7,8 +7,7 @@ import os
 
 app = Flask(__name__)
 lock = threading.Lock()
-certs = 'issued_certificates'
-os.makedirs(certs, exist_ok=True)
+os.makedirs('issued_certificates', exist_ok=True)
 ca = CertificateAuthority()
 ca.generate_ca_keys()
 ca.create_root_certificate()
@@ -39,5 +38,10 @@ def sign_csr():
         print(f'Error: {e}')
     return jsonify({'Error': 'Failed'}), 500
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, threaded=True)
+@app.route('/get_certificate/<node_name>')
+def get_certificate(node_name):
+    cert_path = f'issued_certificates/{node_name}_certificate.pem'
+    if os.path.exists(cert_path):
+        with open(cert_path, 'r') as f:
+            return jsonify({'certificate': f.read()}), 200
+    return jsonify({'error': 'Not found'}), 404
