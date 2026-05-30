@@ -47,7 +47,7 @@ for i in range(1, NUM_NODES + 1):
 nodes_json = json.dumps(nodes)
 nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
 # Write pretty local copy
-with open('nodes.json', 'w') as f:
+with open('scale_nodes.json', 'w') as f:
     json.dump(nodes, f, indent=4)
 build_cmd = f"python3 -c \"import json,base64; f=open('/CryptObj/scale_nodes.json','w'); json.dump(json.loads(base64.b64decode('{nodes_b64}').decode()), f, indent=4); f.close()\""
 ###############################################################################
