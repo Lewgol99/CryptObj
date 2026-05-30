@@ -1,42 +1,42 @@
 import sys
 import time 
-import json # import to use json data structures
-from colorama import Fore, Style # import colorama for colours
+import json
+from colorama import Fore, Style
 from functools import partial
-from pysyncobj import SyncObj, replicated, SyncObjConf # import the original pysyncobj system 
+from pysyncobj import SyncObj, replicated, SyncObjConf
 import datetime
-from pki_setup import PKI # import our setup file
+from pki_setup import PKI
 import os
-from request import get_ca_status, submit_csr_to_ca # import from our server request file
-from encryptor import AsymmetricEncryptor # import from our encryptor file 
-from digital_signature import DigitalSignature # import digital signature
+from request import get_ca_status, submit_csr_to_ca, fetch_all_certificates
+from encryptor import AsymmetricEncryptor
+from digital_signature import DigitalSignature
 
 if __name__ == '__main__':
     
-    with open('scale_nodes.json', 'r') as file: # open our nodes file who will be in the consensus
+    with open('scale_nodes.json', 'r') as file:
         nodes = json.load(file)
 
-    with open('asymmetric_ciphers.json', 'r') as file: # open our ciphers file to select an asymmetric cipher
+    with open('asymmetric_ciphers.json', 'r') as file:
         config = json.load(file)
 
-    with open('rsa_keys.json', 'r') as file:  # open our RSA keys file to load a key
+    with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
 
-    with open('ecc_curves.json', 'r') as file: # open our ECC Curves to load a curve
+    with open('ecc_curves.json', 'r') as file:
         curves = json.load(file)
 
-    with open('ciphers.json', 'r') as file: # open our ciphers file to select a symmetric cipher
+    with open('ciphers.json', 'r') as file:
         ciphers = json.load(file)
 
-    if len(sys.argv) < 5: # Define 5 system arguements at the terminal command line
+    if len(sys.argv) < 5:
         print(Fore.YELLOW + f'Usage: {sys.argv[0]} node_name, asymmetric_cipher, key_size/curve, symmetric_cipher')
         print(Fore.YELLOW + f'Available nodes: {list(nodes.keys())}')
-        print(Fore.YELLOW + f'Available asymmetric ciphers: {config["asymmetric_ciphers"]}') # choose RSA or ECC as an arguement
+        print(Fore.YELLOW + f'Available asymmetric ciphers: {config["asymmetric_ciphers"]}')
         print(Fore.YELLOW + f'Available key sizes: {rsa_keys["key_sizes"]}')
         print(Fore.YELLOW + f'Available ciphers: {ciphers["ciphers"]}')
         sys.exit(-1)
 
-    node_name = sys.argv[1] # Make the node name arguement 1
+    node_name = sys.argv[1]
 
     status = get_ca_status()
     print(Fore.YELLOW + f'CA Status: {status}')
@@ -60,7 +60,7 @@ if __name__ == '__main__':
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
-            conf.password = "SecureRaft2026"  # triggers pysyncobj to call getEncryptor() from encryptor.py
+            conf.password = "SecureRaft2026"
             conf.node_name = node_name
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     print(f"  self  : {self_addr}")
     print(f"  peers : {partner_addrs}\n")
 
-    asymmetric_cipher = sys.argv[2] # make selecting the asymmetric cipher arguement 2
+    asymmetric_cipher = sys.argv[2]
     if asymmetric_cipher not in config['asymmetric_ciphers']:
         print(Fore.RED + f'Error: {asymmetric_cipher} not found in asymmetric_ciphers.json')
         sys.exit(-1)
@@ -149,14 +149,12 @@ if __name__ == '__main__':
             print(Fore.RED + f'Error: Curve {curve_name} not Found in ec_curves.json')
             sys.exit(-1)
 
-    selected_ciphers = sys.argv[4] # make Symmetric Cipher terminal arguement 4
+    selected_ciphers = sys.argv[4]
     if selected_ciphers not in ciphers['ciphers']:
         print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
         sys.exit(-1)
     os.environ['SELECTED_CIPHER'] = selected_ciphers 
-    AsymmetricEncryptor.set_cipher(selected_ciphers) # call the ciphers
-
-    # For Asymmetric Encryption (RSA or ECC)
+    AsymmetricEncryptor.set_cipher(selected_ciphers)
 
     if not os.path.exists('pki_private_key.pem'):
         print(Fore.YELLOW + 'No private key found, generating...')
@@ -170,8 +168,7 @@ if __name__ == '__main__':
             pki.generate_ecc_keys(curve_name)
             pki.generate_csr()
             result = submit_csr_to_ca(node_name)
-
-    # For Digital Signature (RSA or ECC)
+        fetch_all_certificates(node_name)
 
     if not os.path.exists('signing_private_key.pem'):
         print(Fore.YELLOW + 'No signing key found, generating...')
