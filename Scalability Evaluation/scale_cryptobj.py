@@ -1,6 +1,7 @@
 import sys
 import time 
 import json
+import threading
 from colorama import Fore, Style
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
@@ -13,7 +14,7 @@ from digital_signature import DigitalSignature
 
 if __name__ == '__main__':
     
-    with open('nodes.json', 'r') as file:
+    with open('scale_nodes.json', 'r') as file:
         nodes = json.load(file)
 
     with open('asymmetric_ciphers.json', 'r') as file:
@@ -168,7 +169,9 @@ if __name__ == '__main__':
             pki.generate_ecc_keys(curve_name)
             pki.generate_csr()
             result = submit_csr_to_ca(node_name)
+        print(Fore.CYAN + 'Fetching all certificates in parallel...')
         fetch_all_certificates(node_name)
+        print(Fore.GREEN + 'All certificates fetched — starting Raft!')
 
     if not os.path.exists('signing_private_key.pem'):
         print(Fore.YELLOW + 'No signing key found, generating...')
