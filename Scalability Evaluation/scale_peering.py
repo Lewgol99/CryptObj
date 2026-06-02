@@ -54,7 +54,7 @@ build_cmd = f"python3 -c \"import json,base64; data=json.loads(base64.b64decode(
 # CA node — static IP on net0
 ca_host = (as166
            .createHost('ca_node')
-           .joinNetwork('net0', address='10.166.0.253'))
+           .joinNetwork('net0', address='10.166.0.260'))
 ca_host.addSoftware('git')
 ca_host.addSoftware('python3')
 ca_host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
