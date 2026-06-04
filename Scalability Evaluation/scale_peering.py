@@ -7,7 +7,7 @@ from seedemu.services import WebService
 from seedemu.core import Emulator
 from seedemu.compiler import Docker
 
-NUM_NODES    = 50
+NUM_NODES    = 200
 GIT_USERNAME = 'Lewgol99'
 GIT_TOKEN    = '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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
@@ -66,7 +66,7 @@ ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.tx
 ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
 ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 ca_host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
-ca_host.appendStartCommand('cd /CryptObj && gunicorn --workers 4 --bind 0.0.0.0:5000 ca_server:app')
+ca_host.appendStartCommand('cd /CryptObj && gunicorn --workers 8 --bind 0.0.0.0:5000 ca_server:app')
 ###############################################################################
 # All nodes on net0
 for i in range(1, NUM_NODES + 1):
