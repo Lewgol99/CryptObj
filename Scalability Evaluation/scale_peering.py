@@ -49,7 +49,7 @@ nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
 # Write pretty local copy
 with open('scale_nodes.json', 'w') as f:
     json.dump(nodes, f, indent=4)
-build_cmd = f"python3 -c \"import json,base64; data=json.loads(base64.b64decode('{nodes_b64}').decode()); [open(f'/CryptObj/{n}','w').write(json.dumps(data,indent=4)) for n in ['scale_nodes.json','nodes.json']]\""
+build_cmd = f"python3 -c \"import json,base64; data=json.loads(base64.b64decode('{nodes_b64}').decode()); [open('/CryptObj/'+n,'w').write(json.dumps(data,indent=4)) for n in ['scale_nodes.json','nodes.json']]\""
 ###############################################################################
 # CA node — static IP on net0
 ca_host = (as166
