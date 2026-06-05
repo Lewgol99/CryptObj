@@ -77,7 +77,6 @@ if __name__ == '__main__':
         def addValue(self, value, cn):
             _set_enc_ctx(f"addValue({value}) → replicate")
             self.__counter += value
-
             print(
                 f"\n  {'─'*54}\n"
                 f"RAFT LOG ENTRY  [{node_name}]  seq={cn}\n"
@@ -96,7 +95,6 @@ if __name__ == '__main__':
 
         def _getLeader(self):
             leader = super()._getLeader()
-            
             if leader != self._last_leader:
                 if leader:
                     try:
@@ -154,7 +152,7 @@ if __name__ == '__main__':
     if selected_ciphers not in ciphers['ciphers']:
         print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
         sys.exit(-1)
-    os.environ['SELECTED_CIPHER'] = selected_ciphers 
+    os.environ['SELECTED_CIPHER'] = selected_ciphers
     AsymmetricEncryptor.set_cipher(selected_ciphers)
 
     if not os.path.exists('pki_private_key.pem'):
@@ -190,15 +188,31 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
+    # ── Wait for Raft to stabilise before sending ──────────────────────────
+    print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
+    while o._getLeader() is None:
+        time.sleep(1)
+    print(Fore.GREEN + f'[{node_name}] Leader found — waiting 10s for network to stabilise...')
+    time.sleep(10)
+    print(Fore.GREEN + f'[{node_name}] Starting measurement loop...')
+    # ───────────────────────────────────────────────────────────────────────
+
     n = 0
     old_value = -1
+    RUN_DURATION = 600   # run for 10 minutes — adjust as needed
+    start_time = time.time()
 
     while True:
         time.sleep(0.5)
 
+        # Stop after RUN_DURATION seconds
+        if time.time() - start_time > RUN_DURATION:
+            print(Fore.CYAN + f'[{node_name}] Run duration reached ({RUN_DURATION}s). Stopping.')
+            break
+
         leader = o._getLeader()
 
-        if leader is not None and n < 20:
+        if leader is not None:
             _set_enc_ctx(f"addValue(10) seq={n} → send")
             print(f"  ->  [{node_name}] addValue(10)  seq={n}")
             o.addValue(10, n, callback=partial(onAdd, cnt=n))
