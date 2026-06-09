@@ -83,7 +83,7 @@ class DigitalSignature(Asymmetric_Keys):
         try:
             self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
-            message = (','.join([sender_ip] + recipient_ips + '||').encode() + message # include IP adrdress
+            message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message # include IP adrdress
             if isinstance(self.private_key, rsa.RSAPrivateKey):
                 signature = self.private_key.sign(
                     message,
