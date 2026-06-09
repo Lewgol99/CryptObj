@@ -15,6 +15,7 @@ from digital_signature import DigitalSignature
 from colorama import Fore
 
 class TransportNotReadyError(Exception):
+    """Transport failed to get ready for operation."""
 
 class Transport(object):
 
