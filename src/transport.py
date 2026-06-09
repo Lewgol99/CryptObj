@@ -268,7 +268,7 @@ class TCPTransport(Transport):
                 signature       = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                signed_message  = (','.join([peer_address] + [n.address for n in self._nodes]) + '||').encode() + peer_cert.encode()
+                signed_message  = (','.join([peer_address] + sorted([n.address for n in self._nodes])) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
                     conn.disconnect()
@@ -372,7 +372,7 @@ class TCPTransport(Transport):
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
-        signature, _ = self.signer.sign(our_cert.encode(), self._selfNode.address, [n.address for n in self._nodes])
+        signature, _ = self.signer.sign(our_cert.encode(), self._selfNode.address, sorted([n.address for n in self._nodes]))
 
         addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
         conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
@@ -393,7 +393,7 @@ class TCPTransport(Transport):
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                signed_message  = (','.join([peer_address] + [n.address for n in self._nodes]) + '||').encode() + peer_cert.encode()
+                signed_message  = (','.join([peer_address] + sorted([n.address for n in self._nodes])) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} digital signature rejected!')
                     conn.disconnect()
