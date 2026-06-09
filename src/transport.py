@@ -112,7 +112,7 @@ def _wrap_and_sign(signer, message):
 
 def _unwrap_and_verify(signer, peer_public_key, raw):
 original message object, or None on failure.
-    """
+
     if len(raw) < 3:
         print(Fore.RED + '[VERIFY] Message too short to contain header')
         return None
