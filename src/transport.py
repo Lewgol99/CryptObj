@@ -102,7 +102,7 @@ def _wrap_and_sign(signer, message):
         flags   = _FLAG_WAS_DICT
         payload = pickle.dumps(message)
 
-    signature = signer.sign(payload)
+    signature, _ = signer.sign(payload)
     if signature is None:
         print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
         signature = b''
@@ -112,8 +112,7 @@ def _wrap_and_sign(signer, message):
 
 
 def _unwrap_and_verify(signer, peer_public_key, raw):
-original message object, or None on failure.
-
+    """Verify + deserialise a signed Raft message. Returns the original message object, or None on failure."""
     if len(raw) < 3:
         print(Fore.RED + '[VERIFY] Message too short to contain header')
         return None
@@ -169,15 +168,13 @@ class TCPTransport(Transport):
         self._bindOverEvent = threading.Event()
         self._ready = False
         self._send_random_sleep_duration = 0
-        self._peerSigningKeys = {}  # node address -> public key, stored after handshake
+        self._peerSigningKeys = {}
 
-        # ── sign/verify counters ─────────────────────────────────────────────
         self._dbg_send_total    = 0
         self._dbg_send_signed   = 0
         self._dbg_recv_total    = 0
         self._dbg_recv_verified = 0
         self._dbg_recv_dropped  = 0
-        # ────────────────────────────────────────────────────────────────────
 
         self._syncObj.addOnTickCallback(self._onTick)
 
@@ -259,18 +256,16 @@ class TCPTransport(Transport):
         conn.setOnDisconnectedCallback(functools.partial(self._onDisconnected, conn))
 
     def _onIncomingMessageReceived(self, conn, message):
-        # Utility messages
         if isinstance(message, list) and self._onUtilityMessage(conn, message):
             return
 
-        # Handshake — unencrypted, with certificate and signing key exchange
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name = message.get('node_name')
             peer_cert      = message.get('certificate')
             peer_address   = message.get('address')
 
             if peer_cert and peer_node_name:
-                signature      = message.get('signature')
+                signature       = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
                 if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
@@ -499,19 +494,17 @@ class TCPTransport(Transport):
         if self._send_random_sleep_duration:
             time.sleep(random.random() * self._send_random_sleep_duration)
 
-        # Handshake messages: send raw, no signing wrapper
         if isinstance(message, dict) and message.get('type') == 'handshake':
             self._connections[node].send(message)
             return self._connections[node].state == CONNECTION_STATE.CONNECTED
 
-        # All other Raft traffic: sign + wrap
         self._dbg_send_total += 1
         try:
             signed_message = _wrap_and_sign(self.signer, message)
             self._dbg_send_signed += 1
         except Exception as e:
             print(Fore.RED + f'[SIGN] Error signing message: {e}')
-            signed_message = message  # last-resort fallback
+            signed_message = message
 
         if self._dbg_send_total % 50 == 0:
             self._dbg_print_stats()
