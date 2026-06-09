@@ -260,15 +260,16 @@ class TCPTransport(Transport):
             return
 
         if isinstance(message, dict) and message.get('type') == 'handshake':
-            peer_node_name = message.get('node_name')
-            peer_cert      = message.get('certificate')
-            peer_address   = message.get('address')
+            peer_node_name  = message.get('node_name')
+            peer_cert       = message.get('certificate')
+            peer_address    = message.get('address')
 
             if peer_cert and peer_node_name:
                 signature       = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
+                signed_message  = (','.join([peer_address] + [n.address for n in self._nodes]) + '||').encode() + peer_cert.encode()
+                if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
                     conn.disconnect()
                     return
@@ -384,15 +385,16 @@ class TCPTransport(Transport):
 
     def _onOutgoingHandshakeResponse(self, conn, message):
         if isinstance(message, dict) and message.get('type') == 'handshake':
-            peer_node_name = message.get('node_name')
-            peer_cert      = message.get('certificate')
-            peer_address   = message.get('address')
-            signature      = message.get('signature')
+            peer_node_name  = message.get('node_name')
+            peer_cert       = message.get('certificate')
+            peer_address    = message.get('address')
+            signature       = message.get('signature')
 
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                if not self.signer.validate(peer_public_key, peer_cert.encode(), signature):
+                signed_message  = (','.join([peer_address] + [n.address for n in self._nodes]) + '||').encode() + peer_cert.encode()
+                if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} digital signature rejected!')
                     conn.disconnect()
                     return
