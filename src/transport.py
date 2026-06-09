@@ -93,22 +93,6 @@ class Transport(object):
         pass
 
 
-# ── Signing wire format ────────────────────────────────────────────────────────
-#
-#  Every post-handshake Raft message is wrapped as:
-#
-#    [ 1-byte flags ][ 2-byte sig_len ][ signature ][ payload_bytes ]
-#
-#  flags bit 0 = 1  → payload was originally a dict (pickle-serialised here,
-#                      deserialised on receive before passing back up to Raft)
-#  flags bit 0 = 0  → payload was already bytes
-#
-#  This is applied BEFORE the TcpConnection encryptor, so the encryptor
-#  encrypts our signed wrapper.  On receive the encryptor decrypts first,
-#  then _onVerifiedMessageReceived gets our signed wrapper as bytes.
-#
-# ──────────────────────────────────────────────────────────────────────────────
-
 _FLAG_WAS_DICT = 0x01
 
 
@@ -397,7 +381,7 @@ class TCPTransport(Transport):
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
-        signature = self.signer.sign(our_cert.encode())
+        signature = self.signer.sign(our_cert.encode()self._selfAddress, self._peers)
 
         addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
         conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
