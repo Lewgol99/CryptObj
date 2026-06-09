@@ -15,11 +15,8 @@ from digital_signature import DigitalSignature
 from colorama import Fore
 
 class TransportNotReadyError(Exception):
-    """Transport failed to get ready for operation."""
-
 
 class Transport(object):
-    """Base class for implementing a transport between PySyncObj nodes"""
 
     def __init__(self, syncObj, selfNode, otherNodes):
         self._onMessageReceivedCallback = None
@@ -97,7 +94,6 @@ _FLAG_WAS_DICT = 0x01
 
 
 def _wrap_and_sign(signer, message):
-    """Serialise + sign a Raft message. Returns bytes."""
     if isinstance(message, bytes):
         flags   = 0x00
         payload = message
@@ -115,9 +111,7 @@ def _wrap_and_sign(signer, message):
 
 
 def _unwrap_and_verify(signer, peer_public_key, raw):
-    """
-    Verify + deserialise a signed Raft message.
-    Returns the original message object, or None on failure.
+original message object, or None on failure.
     """
     if len(raw) < 3:
         print(Fore.RED + '[VERIFY] Message too short to contain header')
@@ -381,7 +375,7 @@ class TCPTransport(Transport):
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
-        signature = self.signer.sign(our_cert.encode()self._selfAddress, self._peers)
+        signature, _ = self.signer.sign(our_cert.encode(), self._selfNode.address, [n.address for n in self._nodes])
 
         addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
         conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
@@ -428,11 +422,6 @@ class TCPTransport(Transport):
         self._onNodeConnected(node)
 
     def _onVerifiedMessageReceived(self, node, message):
-        """
-        Called for every post-handshake message.
-        The encryptor (if active) decrypts before this callback fires,
-        so `message` is always bytes containing our signed wrapper.
-        """
         self._dbg_recv_total += 1
 
         if not isinstance(message, bytes):
@@ -504,13 +493,6 @@ class TCPTransport(Transport):
             del self._peerSigningKeys[node_addr]
 
     def send(self, node, message):
-        """
-        Sign every outgoing Raft message (dict or bytes) before the encryptor
-        sees it.  Handshake dicts are exempt — they travel unsigned/unencrypted.
-
-        Wire format for signed messages:
-            [ 1-byte flags ][ 2-byte sig_len ][ signature ][ payload ]
-        """
         if node not in self._connections or self._connections[node].state != CONNECTION_STATE.CONNECTED:
             return False
         if self._send_random_sleep_duration:
