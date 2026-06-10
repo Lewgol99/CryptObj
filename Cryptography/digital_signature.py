@@ -79,19 +79,38 @@ class DigitalSignature(Asymmetric_Keys):
             print(Fore.RED + f'Error: Signing Public Key Failed!')
             return None
 
-    def sign(self, message, sender_ip, recipient_ips):
+    def _do_sign(self, data: bytes):
+        """Low-level sign — signs exactly the bytes passed in, no modification."""
+        if isinstance(self.private_key, rsa.RSAPrivateKey):
+            return self.private_key.sign(
+                data,
+                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+                hashes.SHA256()
+            )
+        else:
+            return self.private_key.sign(data, ec.ECDSA(hashes.SHA256()))
+
+    def sign_raw(self, data: bytes):
+        """Sign pre-built bytes exactly as-is. Used for handshake where the
+        caller constructs the exact byte sequence the verifier will reconstruct."""
+        try:
+            self.throughput_monitor.start_throughput()
+            self.latency_monitor.start_latency()
+            signature = self._do_sign(data)
+            self.throughput_monitor.stop_throughput(len(data), 'sign')
+            self.latency_monitor.stop_latency('sign')
+            return signature
+        except Exception as e:
+            print(Fore.RED + f'Error: Failed Signing Message! {e}')
+            return None
+
+    def sign(self, message: bytes, sender_ip: str, recipient_ips: list):
+        """Sign a Raft message, prepending sender+recipient IPs for replay protection."""
         try:
             self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             signed_message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message
-            if isinstance(self.private_key, rsa.RSAPrivateKey):
-                signature = self.private_key.sign(
-                    signed_message,
-                    padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-                    hashes.SHA256()
-                )
-            else:
-                signature = self.private_key.sign(signed_message, ec.ECDSA(hashes.SHA256()))
+            signature = self._do_sign(signed_message)
             self.throughput_monitor.stop_throughput(len(signed_message), 'sign')
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
@@ -100,7 +119,8 @@ class DigitalSignature(Asymmetric_Keys):
             print(Fore.RED + f'Error: Failed Signing Message! {e}')
             return None
 
-    def validate(self, public_key, message, signature):
+    def validate(self, public_key, message: bytes, signature: bytes):
+        """Verify a signature over exactly the bytes in message."""
         try:
             self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
