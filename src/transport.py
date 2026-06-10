@@ -139,6 +139,11 @@ def _unwrap_and_verify(signer, peer_public_key, raw):
     else:
         print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
 
+    # Strip the IP prefix (sender_ip,recipient,...||) that was prepended during signing
+    sep_index = payload.find(b'||')
+    if sep_index != -1:
+        payload = payload[sep_index + 2:]
+
     if flags & _FLAG_WAS_DICT:
         try:
             return pickle.loads(payload)
