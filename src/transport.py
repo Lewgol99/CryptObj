@@ -94,7 +94,7 @@ class Transport(object):
 _FLAG_WAS_DICT = 0x01
 
 
-def _wrap_and_sign(signer, message):
+def _wrap_and_sign(signer, message, sender_ip, recipient_ips):
     if isinstance(message, bytes):
         flags   = 0x00
         payload = message
@@ -102,13 +102,16 @@ def _wrap_and_sign(signer, message):
         flags   = _FLAG_WAS_DICT
         payload = pickle.dumps(message)
 
-    signature, _ = signer.sign(payload)
-    if signature is None:
+    result = signer.sign(payload, sender_ip, recipient_ips)
+    if result is None:
         print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
-        signature = b''
+        signature    = b''
+        signed_payload = payload
+    else:
+        signature, signed_payload = result
 
     header = struct.pack('!BH', flags, len(signature))
-    return header + signature + payload
+    return header + signature + signed_payload
 
 
 def _unwrap_and_verify(signer, peer_public_key, raw):
@@ -506,7 +509,13 @@ class TCPTransport(Transport):
 
         self._dbg_send_total += 1
         try:
-            signed_message = _wrap_and_sign(self.signer, message)
+            recipient_ips = [n.address for n in self._nodes]
+            signed_message = _wrap_and_sign(
+                self.signer,
+                message,
+                self._selfNode.address,
+                recipient_ips,
+            )
             self._dbg_send_signed += 1
         except Exception as e:
             print(Fore.RED + f'[SIGN] Error signing message: {e}')
