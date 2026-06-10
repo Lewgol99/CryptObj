@@ -79,23 +79,23 @@ class DigitalSignature(Asymmetric_Keys):
             print(Fore.RED + f'Error: Signing Public Key Failed!')
             return None
 
-    def sign(self, message, sender_ip, recipient_ips): # include IP addreses 
+    def sign(self, message, sender_ip, recipient_ips):
         try:
             self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
-            message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message # include IP adrdress
+            signed_message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message
             if isinstance(self.private_key, rsa.RSAPrivateKey):
                 signature = self.private_key.sign(
-                    message,
+                    signed_message,
                     padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
                     hashes.SHA256()
                 )
             else:
-                signature = self.private_key.sign(message, ec.ECDSA(hashes.SHA256()))
-            self.throughput_monitor.stop_throughput(len(message), 'sign')
+                signature = self.private_key.sign(signed_message, ec.ECDSA(hashes.SHA256()))
+            self.throughput_monitor.stop_throughput(len(signed_message), 'sign')
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
-            return signature, message # return digital signature and IP address
+            return signature, signed_message
         except Exception as e:
             print(Fore.RED + f'Error: Failed Signing Message! {e}')
             return None
