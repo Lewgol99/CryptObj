@@ -7,7 +7,7 @@ from seedemu.services import WebService
 from seedemu.core import Emulator
 from seedemu.compiler import Docker
 
-NUM_NODES    = 200
+NUM_NODES    = 3
 GIT_USERNAME = 'Lewgol99'
 GIT_TOKEN    = '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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
