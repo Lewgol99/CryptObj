@@ -9,7 +9,7 @@ from seedemu.compiler import Docker
 
 NUM_NODES    = 200
 GIT_USERNAME = 'Lewgol99'
-GIT_TOKEN    = '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'
+GIT_TOKEN    = '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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'
 GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
 
 ###############################################################################
