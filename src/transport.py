@@ -105,7 +105,7 @@ def _wrap_and_sign(signer, message, sender_ip, recipient_ips):
     result = signer.sign(payload, sender_ip, recipient_ips)
     if result is None:
         print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
-        signature    = b''
+        signature      = b''
         signed_payload = payload
     else:
         signature, signed_payload = result
@@ -272,6 +272,7 @@ class TCPTransport(Transport):
                 signature       = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                # Must match exactly what _sendSelfAddress builds with sign_raw
                 signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
@@ -376,8 +377,10 @@ class TCPTransport(Transport):
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
-        cluster = sorted([self._selfNode.address] + [n.address for n in self._nodes])
-        signature, _ = self.signer.sign(our_cert.encode(), self._selfNode.address, cluster)
+        # Build the exact byte sequence the verifier will reconstruct, sign it raw
+        cluster        = sorted([self._selfNode.address] + [n.address for n in self._nodes])
+        signed_message = (','.join(cluster) + '||').encode() + our_cert.encode()
+        signature      = self.signer.sign_raw(signed_message)
 
         addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
         conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
@@ -400,6 +403,7 @@ class TCPTransport(Transport):
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                # Must match exactly what _sendSelfAddress builds with sign_raw
                 signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} digital signature rejected!')
@@ -509,7 +513,7 @@ class TCPTransport(Transport):
 
         self._dbg_send_total += 1
         try:
-            recipient_ips = [n.address for n in self._nodes]
+            recipient_ips  = [n.address for n in self._nodes]
             signed_message = _wrap_and_sign(
                 self.signer,
                 message,
