@@ -2,7 +2,7 @@
 
 The objectives of CryptObj project are to implement key wrapping by use of Asymmetric and Symmetric Cryptography into the protocol to secure and encapsulate data in transit to be used for state replication in consensus deployed in distributed systems. This validates NIST security properties for information security and can be used as a network protocol for security applications.  
 
-<img width="431" height="330" alt="image" src="https://github.com/user-attachments/assets/c075198d-4593-47c9-a670-bdee7a0f4c23" />
+<img width="439" height="333" alt="image" src="https://github.com/user-attachments/assets/bb0b39de-3c34-4e38-aa24-d9ed694e55c9" />
 
 
 ## Original Projects
