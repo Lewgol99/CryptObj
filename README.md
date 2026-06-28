@@ -15,7 +15,7 @@ Original PySyncObj:
  https://github.com/bakwc/PySyncObj
 ```
 
-Emulator for deployment (optional):
+SEED Internet Emulator:
 
 ```python
  https://github.com/seed-labs/seed-emulator
