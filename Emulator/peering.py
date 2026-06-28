@@ -1,4 +1,3 @@
-# Emulator Setup
 emu = Emulator()
 base = Base()
 routing = Routing()
