@@ -1,3 +1,9 @@
+from seedemu import *
+from seedemu.layers import Base, Routing, Ebgp, PeerRelationship, Ibgp, Ospf
+from seedemu.services import WebService
+from seedemu.core import Emulator
+from seedemu.compiler import Docker
+
 emu = Emulator()
 base = Base()
 routing = Routing()
@@ -28,7 +34,7 @@ router166 = as166.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router166.joinNetwork('ix100', '10.100.0.166')
 router166.addSoftware('git')
 router166.addSoftware('python3')
-router166.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+router166.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
 router166.addBuildCommand(f'chmod -R 777 CryptObj')
 router166.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 router166.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
@@ -39,7 +45,7 @@ router176 = as176.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router176.joinNetwork('ix100', '10.100.0.176')
 router176.addSoftware('git')
 router176.addSoftware('python3')
-router176.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+router176.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
 router176.addBuildCommand(f'chmod -R 777 CryptObj')
 router176.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 router176.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
@@ -50,7 +56,7 @@ router186 = as186.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router186.joinNetwork('ix100', '10.100.0.186')
 router186.addSoftware('git')
 router186.addSoftware('python3')
-router186.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+router186.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
 router186.addBuildCommand(f'chmod -R 777 CryptObj')
 router186.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 router186.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
@@ -61,7 +67,7 @@ router196 = as196.createRealWorldRouter('branch', prefixes=['0.0.0.0/1', '128.0.
 router196.joinNetwork('ix100', '10.100.0.196')
 router196.addSoftware('git')
 router196.addSoftware('python3')
-router196.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+router196.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
 router196.addBuildCommand(f'chmod -R 777 CryptObj')
 router196.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 router196.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
