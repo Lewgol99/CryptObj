@@ -1,28 +1,25 @@
-Protocol: AppendEntriesRPC 
+Protocol: CryptObj AnB
 Types:
-  Agent ca, L, F;
-  Certified ca, L, F;
-  Number CurrentTerm, CommitIdx, PrevLogIdx, PrevLogTerm;
-  Number C1,C2;
+  Agent C1,C2,C3;
+  Number Term, LastLogIdx, LastLogTerm, empty, requestvoterequest;
   Function [Agent -> PublicKey] pk;
   Function [Agent -> PublicKey] sk;
-  Function [Number -> Number] successor; 
-  Function [Number, Number -> Boolean] success; 
-  Function [Number, Number -> Boolean] reset; 
-
-Definitions:
-  Entry: C1,C2;
 
 Knowledge:
-    ca: L, F, pk(L), pk(F), pk(ca), inv(pk(ca));
-    L: L, F, pk(F), inv(sk(L)), pk(ca), successor;
-    F: L, F, pk(L), inv(sk(F)), pk(ca), successor;
-    
-Actions:
-   L -> F, @(L|F|F): CurrentTerm, CommitIdx, Entry, PrevLogIdx, PrevLogTerm
-   F -> L, @(F|L|L): CurrentTerm, successor(PrevLogIdx), Success(PrevLogIdx, PrevLogTerm), Reset(PrevLogIdx, PrevLogTerm)
+    C1: C1, C2, C3, pk, sk, inv(sk(C1)), inv(pk(C1)), empty, requestvoterequest;
+    C2: C1, C2, C3, pk, sk, inv(sk(C2)), inv(pk(C2)), empty, requestvoterequest;
+    C3: C1, C2, C3, pk, sk, inv(sk(C3)), inv(pk(C3)), empty;
 
+Actions:
+C1 -> C2: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C1))}pk(C2)
+C2 -> C1: empty
+C1 -> C3: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C1))}pk(C3)
+C3 -> C2: empty
+C2 -> C3: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C2))}pk(C3)
+   
 Goals:
-   F authenticates L on CurrentTerm, CommitIdx, Entry, PrevLogIdx, PrevLogTerm
-   L authenticates F on  CurrentTerm, successor(PrevLogIdx), success(PrevLogIdx, PrevLogTerm), reset(PrevLogIdx, PrevLogTerm)
-   Entry secret between L, F
+   C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
+   C2 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
+   Term secret between C1, C2, C3
+   LastLogIdx secret between C1, C2, C3
+   LastLogTerm secret between C1, C2, C3
