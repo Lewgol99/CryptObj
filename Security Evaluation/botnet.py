@@ -9,9 +9,9 @@ from seedemu.utilities import Makers
 
 NUM_NODES = 3
 NUM_BOTS  = 4
-GIT_USERNAME = 'Lewgol99'
-GIT_TOKEN    = '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'
-GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
+#GIT_USERNAME = 'Lewgol99'
+#GIT_TOKEN    = ''
+#GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
 
 ###############################################################################
 emu     = Emulator()
@@ -56,7 +56,7 @@ ca_host = (as166
            .joinNetwork('net0', address='10.166.0.253'))
 ca_host.addSoftware('git')
 ca_host.addSoftware('python3')
-ca_host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+ca_host.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
 ca_host.addBuildCommand('find CryptObj -mindepth 2 -type f -exec mv -n {} CryptObj/ \\; || true')
 ca_host.addBuildCommand('chmod -R 777 CryptObj')
 ca_host.addBuildCommand(build_cmd)
@@ -73,7 +73,7 @@ for i in range(1, NUM_NODES + 1):
     host = as166.createHost(name).joinNetwork('net0')
     host.addSoftware('git')
     host.addSoftware('python3')
-    host.addBuildCommand(f'git clone https://{GIT_USERNAME}:{GIT_TOKEN}@github.com/Lewgol99/CryptObj.git')
+    host.addBuildCommand(f'git clone https://github.com/Lewgol99/CryptObj.git')
     host.addBuildCommand('find CryptObj -mindepth 2 -type f -exec mv -n {} CryptObj/ \\; || true')
     host.addBuildCommand('chmod -R 777 CryptObj')
     host.addBuildCommand(build_cmd)
