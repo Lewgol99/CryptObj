@@ -26,7 +26,7 @@ SEED Internet Emulator:
 
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
-This protocol can be automatically executed by running scale_peering.py within the Scalability Evaluation directory. The script allows for the quantity of nodes to be changed, as well as the asymmetric techniques by specifying RSA with the key size or ECC with the curve, and symmetric techniques such as AES or ChaCha20.  
+This protocol can be automatically executed by running scale_peering.py within the Scalability Evaluation directory. The script allows for the quantity of nodes to be changed, as well as the Asymmetric Techniques by specifying RSA with the key size or ECC with the curve, and Symmetric Techniques such as AES or ChaCha20.  
 
 Alternatively, to run manually with nodes.json, copy the new source code files to replace the ones from the original PySyncObj project. 
 
