@@ -49,6 +49,22 @@ To run the system ensure the node name, asymmetric cipher, options for the key s
 python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
 ```
 
+## Analysis Output
+
+CryptObj generates CSV outputs that contain:
+- Encryption and Decryption Time (ms)
+- Signing and Verification Time (ms) 
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 
 ## Publications
 [![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)](https://scholar.google.com/citations?user=hA6XGAQAAAAJ&hl=en)
