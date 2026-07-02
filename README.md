@@ -4,6 +4,8 @@ The objectives of the CryptObj protocol are to implement key wrapping by use of 
 
 <img width="439" height="333" alt="image" src="https://github.com/user-attachments/assets/bb0b39de-3c34-4e38-aa24-d9ed694e55c9" />
 
+<img width="421" height="306" alt="image" src="https://github.com/user-attachments/assets/cb0a6ece-6c08-4bc7-a05d-09a83b98f990" />
+
 
 ## Original Projects
 
