@@ -24,7 +24,7 @@ SEED Internet Emulator:
 
 ## Getting Started
 
-This protocol can be automatically executed by running Scalability Evaluation and then scale_peering.py, where the quantity of nodes can be changed, as well as the asymmetric techniques by specifying RSA with the key size or ECC with the curve, and symmetric techniques such as AES or ChaCha20.  
+This protocol can be automatically executed by running scale_peering.py within the Scalability Evaluation directory. The script allows for the quantity of nodes to be changed, as well as the asymmetric techniques by specifying RSA with the key size or ECC with the curve, and symmetric techniques such as AES or ChaCha20.  
 
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
