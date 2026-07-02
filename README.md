@@ -23,6 +23,9 @@ SEED Internet Emulator:
 
 
 ## Getting Started
+
+This protocol can be automatically executed by running Scalability Evaluation 
+
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
 
