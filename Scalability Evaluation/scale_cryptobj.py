@@ -11,9 +11,10 @@ import os
 from request import get_ca_status, submit_csr_to_ca, fetch_all_certificates
 from encryptor import AsymmetricEncryptor
 from digital_signature import DigitalSignature
+from latency_monitor import LatencyMonitor  # unmodified — only imported, not edited
 
 if __name__ == '__main__':
-    
+
     NO_CRYPTO = '--no-crypto' in sys.argv
     if NO_CRYPTO:
         sys.argv.remove('--no-crypto')
@@ -116,9 +117,26 @@ if __name__ == '__main__':
                 self._last_leader = leader
             return leader
 
+    # seq -> perf_counter() at send time; keyed because addValue is fire-and-forget
+    # and more than one commit can be in flight when replication is slow.
+    pending_latency = {}
+
     def onAdd(res, err, cnt):
         status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
         print(f"onAdd seq={cnt}  result={res}  {status}")
+
+        start = pending_latency.pop(cnt, None)
+        if start is not None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            label = f'raft_roundtrip_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
+            latency_monitor._results_list.append({
+                'measurement': len(latency_monitor._results_list) + 1,
+                'label': label,
+                'latency_ms': round(latency_ms, 6)
+            })
+            print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
+            if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
+                latency_monitor.save_file('latency_measurements')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -193,6 +211,11 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
+    if o.encryptor is not None:
+        latency_monitor = o.encryptor.latency_monitor
+    else:
+        latency_monitor = LatencyMonitor()
+
     # ── Wait for Raft to stabilise before sending ──────────────────────────
     print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
     while o._getLeader() is None:
@@ -220,6 +243,7 @@ if __name__ == '__main__':
         if leader is not None:
             _set_enc_ctx(f"addValue(10) seq={n} → send")
             print(f"  ->  [{node_name}] addValue(10)  seq={n}")
+            pending_latency[n] = time.perf_counter()
             o.addValue(10, n, callback=partial(onAdd, cnt=n))
             n += 1
 
@@ -227,3 +251,6 @@ if __name__ == '__main__':
         if current != old_value:
             old_value = current
             print(f"[{node_name}] counter = {Fore.CYAN}{current}{Style.RESET_ALL}")
+
+    latency_monitor.save_file('latency_measurements')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} measurements to latency_measurements.csv')
