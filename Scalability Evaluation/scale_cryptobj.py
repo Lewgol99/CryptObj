@@ -14,6 +14,11 @@ from digital_signature import DigitalSignature
 
 if __name__ == '__main__':
     
+    NO_CRYPTO = '--no-crypto' in sys.argv
+    if NO_CRYPTO:
+        sys.argv.remove('--no-crypto')
+    # ─────────────────────────────────────────────────────────────────────
+
     with open('scale_nodes.json', 'r') as file:
         nodes = json.load(file)
 
@@ -61,7 +66,7 @@ if __name__ == '__main__':
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
-            conf.password = "SecureRaft2026"
+            conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
