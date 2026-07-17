@@ -43,11 +43,13 @@ cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
 cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 ```
 
-To run the system ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement. 
+To run the system with Hybrid Cryptography, ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement. 
 
 ```python
 python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
 ```
+
+To run the protocol with no cryptography, add the --no-crypto flag at the end. 
 
 ## Analysis Output
 
