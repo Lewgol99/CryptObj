@@ -94,13 +94,19 @@ class Transport(object):
 _FLAG_WAS_DICT = 0x01
 
 
-def _wrap_and_sign(signer, message, sender_ip, recipient_ips):
+def _wrap_and_sign(signer, message, sender_ip, recipient_ips, sign_enabled=True):
     if isinstance(message, bytes):
         flags   = 0x00
         payload = message
     else:
         flags   = _FLAG_WAS_DICT
         payload = pickle.dumps(message)
+
+    if not sign_enabled:
+        # --no-crypto: skip signing entirely, header carries sig_len=0 explicitly
+        # so the receiver knows this is intentionally unsigned, not a failure.
+        header = struct.pack('!BH', flags, 0)
+        return header + payload
 
     result = signer.sign(payload, sender_ip, recipient_ips)
     if result is None:
@@ -114,7 +120,7 @@ def _wrap_and_sign(signer, message, sender_ip, recipient_ips):
     return header + signature + signed_payload
 
 
-def _unwrap_and_verify(signer, peer_public_key, raw):
+def _unwrap_and_verify(signer, peer_public_key, raw, verify_enabled=True):
     """Verify + deserialise a signed Raft message. Returns the original message object, or None on failure."""
     if len(raw) < 3:
         print(Fore.RED + '[VERIFY] Message too short to contain header')
@@ -129,15 +135,17 @@ def _unwrap_and_verify(signer, peer_public_key, raw):
     signature = raw[3:3 + sig_len]
     payload   = raw[3 + sig_len:]
 
-    if peer_public_key is not None:
-        if sig_len == 0:
-            print(Fore.RED + '[VERIFY] No signature present but key exists — dropping!')
-            return None
-        if not signer.validate(peer_public_key, payload, signature):
-            print(Fore.RED + '[VERIFY] Signature FAILED — dropping message!')
-            return None
-    else:
-        print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
+    if verify_enabled:
+        if peer_public_key is not None:
+            if sig_len == 0:
+                print(Fore.RED + '[VERIFY] No signature present but key exists — dropping!')
+                return None
+            if not signer.validate(peer_public_key, payload, signature):
+                print(Fore.RED + '[VERIFY] Signature FAILED — dropping message!')
+                return None
+        else:
+            print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
+    # else: --no-crypto — verification intentionally skipped regardless of sig_len/peer key
 
     # Strip the IP prefix (sender_ip,recipient,...||) that was prepended during signing
     sep_index = payload.find(b'||')
@@ -160,6 +168,11 @@ class TCPTransport(Transport):
         self.signer = DigitalSignature()
         self.signer.Load_Private_Key()
         self._syncObj = syncObj
+        # Reuses the same signal conf.password/--no-crypto already produces —
+        # no new flag, just extending it to also gate per-message signing.
+        # Handshake authentication (connection setup, once per peer) is left
+        # untouched; this only covers the ongoing per-message send/receive path.
+        self._crypto_enabled = syncObj.encryptor is not None
         self._server = None
         self._connections = {}
         self._unknownConnections = set()
@@ -446,7 +459,7 @@ class TCPTransport(Transport):
         node_addr       = getattr(node, 'address', None)
         peer_public_key = self._peerSigningKeys.get(node_addr)
 
-        result = _unwrap_and_verify(self.signer, peer_public_key, message)
+        result = _unwrap_and_verify(self.signer, peer_public_key, message, verify_enabled=self._crypto_enabled)
         if result is None:
             self._dbg_recv_dropped += 1
             return
@@ -524,6 +537,7 @@ class TCPTransport(Transport):
                 message,
                 self._selfNode.address,
                 recipient_ips,
+                sign_enabled=self._crypto_enabled,
             )
             self._dbg_send_signed += 1
         except Exception as e:
