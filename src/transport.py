@@ -12,6 +12,7 @@ import threading
 import time
 import random
 from digital_signature import DigitalSignature
+from latency_monitor import LatencyMonitor
 from colorama import Fore
 
 class TransportNotReadyError(Exception):
@@ -176,6 +177,13 @@ class TCPTransport(Transport):
         # Handshake authentication (connection setup, once per peer) is left
         # untouched; this only covers the ongoing per-message send/receive path.
         self._crypto_enabled = syncObj.encryptor is not None
+        # Separate file from latency_measurements.csv (encrypt/decrypt/roundtrip) —
+        # this times the send/receive wrapper functions themselves, which run in
+        # both crypto and no-crypto modes, giving directly comparable numbers.
+        self._sr_latency_monitor = LatencyMonitor()
+        self._sr_since_save = 0
+        self._SR_SAVE_INTERVAL = 20  # same reasoning as scale_cryptobj.py — don't
+                                      # rely solely on a clean shutdown to flush
         self._server = None
         self._connections = {}
         self._unknownConnections = set()
@@ -209,6 +217,17 @@ class TCPTransport(Transport):
             self._createServer()
         else:
             self._ready = True
+
+    def _record_sr_latency(self, label, elapsed_ms):
+        self._sr_latency_monitor._results_list.append({
+            'measurement': len(self._sr_latency_monitor._results_list) + 1,
+            'label': label,
+            'latency_ms': round(elapsed_ms, 6)
+        })
+        self._sr_since_save += 1
+        if self._sr_since_save >= self._SR_SAVE_INTERVAL:
+            self._sr_latency_monitor.save_file('send_receive_latency')
+            self._sr_since_save = 0
 
     def _dbg_print_stats(self):
         print(Fore.CYAN + '[SIGN STATS] ──────────────────────────────────────────')
@@ -462,7 +481,11 @@ class TCPTransport(Transport):
         node_addr       = getattr(node, 'address', None)
         peer_public_key = self._peerSigningKeys.get(node_addr)
 
+        _recv_start = time.perf_counter()
         result = _unwrap_and_verify(self.signer, peer_public_key, message, verify_enabled=self._crypto_enabled)
+        _recv_elapsed_ms = (time.perf_counter() - _recv_start) * 1000
+        self._record_sr_latency('receive' if self._crypto_enabled else 'receive_no_crypto', _recv_elapsed_ms)
+
         if result is None:
             self._dbg_recv_dropped += 1
             return
@@ -535,6 +558,7 @@ class TCPTransport(Transport):
         self._dbg_send_total += 1
         try:
             recipient_ips  = [n.address for n in self._nodes]
+            _send_start = time.perf_counter()
             signed_message = _wrap_and_sign(
                 self.signer,
                 message,
@@ -542,6 +566,8 @@ class TCPTransport(Transport):
                 recipient_ips,
                 sign_enabled=self._crypto_enabled,
             )
+            _send_elapsed_ms = (time.perf_counter() - _send_start) * 1000
+            self._record_sr_latency('send' if self._crypto_enabled else 'send_no_crypto', _send_elapsed_ms)
             self._dbg_send_signed += 1
         except Exception as e:
             print(Fore.RED + f'[SIGN] Error signing message: {e}')
@@ -556,6 +582,8 @@ class TCPTransport(Transport):
     def destroy(self):
         print(Fore.CYAN + '[SIGN] destroy() — final stats:')
         self._dbg_print_stats()
+        self._sr_latency_monitor.save_file('send_receive_latency')
+        print(Fore.CYAN + f'[SEND/RECV] Saved {len(self._sr_latency_monitor._results_list)} measurements to send_receive_latency.csv')
         self.setOnMessageReceivedCallback(None)
         self.setOnNodeConnectedCallback(None)
         self.setOnNodeDisconnectedCallback(None)
