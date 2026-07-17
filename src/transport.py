@@ -145,12 +145,15 @@ def _unwrap_and_verify(signer, peer_public_key, raw, verify_enabled=True):
                 return None
         else:
             print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
-    # else: --no-crypto — verification intentionally skipped regardless of sig_len/peer key
 
-    # Strip the IP prefix (sender_ip,recipient,...||) that was prepended during signing
-    sep_index = payload.find(b'||')
-    if sep_index != -1:
-        payload = payload[sep_index + 2:]
+        # Strip the IP prefix (sender_ip,recipient,...||) that was prepended during signing.
+        # Only ever added by _wrap_and_sign when sign_enabled=True, so only strip it here
+        # under the same condition — otherwise this can accidentally match '||' occurring
+        # naturally inside raw pickled bytes and truncate/corrupt an unsigned payload.
+        sep_index = payload.find(b'||')
+        if sep_index != -1:
+            payload = payload[sep_index + 2:]
+    # else: --no-crypto — verification and prefix-stripping both intentionally skipped
 
     if flags & _FLAG_WAS_DICT:
         try:
