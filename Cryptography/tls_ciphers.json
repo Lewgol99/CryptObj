@@ -1,12 +1,12 @@
 {
-  "tls_versions": [
+  "tls_version": [
     "TLSv1.3"
   ],
-  "expected_cipher_suites": [
+  "cipher_suites": [
     "TLS_AES_256_GCM_SHA256",
     "TLS_CHACHA20_POLY1305_SHA256"
   ],
-  "expected_groups": [
+  "groups": [
     "secp256r1",
     "secp384r1"
   ]
