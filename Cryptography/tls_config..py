@@ -21,7 +21,7 @@ class TLS:
     try:
         self.server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.server_context.load_cert_chain(certfile="mycertfile", keyfile="mykeyfile")
-        SELF.bindsocket = socket.socket()
+        self.bindsocket = socket.socket()
         print(Fore.GREEN + 'Success: TLS Server Created!')
         return True
     except Exception as e:
