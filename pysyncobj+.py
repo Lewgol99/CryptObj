@@ -145,7 +145,7 @@ if __name__ == '__main__':
             print(Fore.RED + f'Error: {tls_group} not found in ec_curves.json')
             sys.exit(-1)
         del sys.argv[tls_index:tls_index + 2]
-        os.envion['USE_TLS'] = tls_group
+        os.environ['USE_TLS'] = tls_group
 
     if asymmetric_cipher == 'RSA':
         key_size = int(key_param)
