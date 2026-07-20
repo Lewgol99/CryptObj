@@ -45,6 +45,8 @@ cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 
 To run the system with Hybrid Cryptography, ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement.
 
+<img width="80" height="80" alt="image" src="https://github.com/user-attachments/assets/ee84b51e-d9dc-46b0-94a9-3399d8ed8de8" />
+
 ```python
 python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher>
 ```
