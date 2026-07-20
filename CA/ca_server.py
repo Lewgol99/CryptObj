@@ -11,6 +11,7 @@ os.makedirs('issued_certificates', exist_ok=True)
 ca = CertificateAuthority()
 ca.generate_ca_keys()
 ca.create_root_certificate()
+ca.save_certificate(ca.root_cert)
 
 @app.route("/")
 def server_status():
