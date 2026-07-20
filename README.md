@@ -50,6 +50,8 @@ python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cip
 ```
 Two optional flags can be appended after these arguments:
 
+<img width="150" height="55" alt="image" src="https://github.com/user-attachments/assets/31af7ea3-f71a-4d66-ad58-c738a0602765" />
+
 --no-crypto disables encryption entirely and runs the system in plaintext, for baseline comparison.
 
 ```python
