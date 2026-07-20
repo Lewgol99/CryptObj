@@ -54,13 +54,13 @@ Two optional flags can be appended after these arguments:
 
 ```python
 python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher> --no-crypto
-```python
+```
 
 --tls runs the system using TLS 1.3 instead of Hybrid Cryptography, and requires an ECC curve as its value.
 
 ```python
 python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher> --tls <curve>
-```python
+```
 
 
 ## Analysis Output
