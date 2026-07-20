@@ -8,7 +8,7 @@ class TLS:
   def __init__(self, ciphers, group):
     self.cipher = ciphers
     self.group = group
-
+    self.latency_monitor = LatencyMonitor()
 
   def open_cipher_suite(self):
       try:
@@ -78,6 +78,7 @@ class TLS:
   def confirm_tls_handshake(self):
     try:
         cipher_name = self.conn.cipher()[0]
+        self.cipher_name = cipher_name
         if cipher_name not in self.cipher_suites:
             print(Fore.YELLOW + f'Warning: negotiated {cipher_name}, not in expected list')
         print(Fore.GREEN + f'Success: negotiated {cipher_name}, {self.conn.version()}')
@@ -88,8 +89,10 @@ class TLS:
   
 
   def tls_channel(self, data):
-    try:
+    try:    
+        self.latency_monitor.start_latency()
         self.conn.sendall(data)
+        self.latency_monitor.stop_latency(f'encrypt_{self.cipher_name}')
         print(Fore.GREEN + 'Success: TLS Channel Connected!')
         return True
     except Exception as e:
