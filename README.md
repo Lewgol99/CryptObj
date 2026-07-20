@@ -60,8 +60,7 @@ Two optional flags can be appended after these arguments:
 python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher> --no-crypto
 ```
 
-<img width="170" height="70" alt="image" src="https://github.com/user-attachments/assets/32f51608-420e-47c9-8019-ce5bbb46104a" />
-
+<img width="174" height="166" alt="image" src="https://github.com/user-attachments/assets/05edcb87-fbaa-48df-a92b-fed86bd597ba" />
 
 --tls runs the system using TLS 1.3 instead of Hybrid Cryptography, and requires an ECC curve as its value.
 
