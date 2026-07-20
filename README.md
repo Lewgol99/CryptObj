@@ -43,13 +43,22 @@ cp transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py
 cp encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py
 ```
 
-To run the system with Hybrid Cryptography, ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement. 
+To run the system with Hybrid Cryptography, ensure the node name, asymmetric cipher, options for the key size or curve, and symmetric cipher must be defined as a command line arguement.
 
 ```python
-python3 ./pysyncobj+.py <node_name> <asymmetric cipher> [options] <symmetric_cipher> 
+python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher>
 ```
+Two optional flags can be appended after these arguments:
 
-To run the protocol with no cryptography, add the --no-crypto flag at the end. 
+--no-crypto disables encryption entirely and runs the system in plaintext, for baseline comparison.
+
+```python
+python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher> --no-crypto
+```
+--tls runs the system using TLS 1.3 instead of Hybrid Cryptography, and requires an ECC curve as its value.
+python3 ./pysyncobj+.py <node_name> <asymmetric_cipher> [options] <symmetric_cipher> --tls <curve>
+```python
+
 
 ## Analysis Output
 
