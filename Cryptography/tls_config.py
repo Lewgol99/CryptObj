@@ -42,7 +42,7 @@ class TLS:
         self.client_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self.client_context.minimum_version = ssl.TLSVersion.TLSv1_3
         self.client_context.maximum_version = ssl.TLSVersion.TLSv1_3
-        self.client_context.load_verify_locations(cafile='certificate.pem')
+        self.client_context.load_verify_locations(cafile='ca_root_certificate.pem')
         print(Fore.GREEN + 'Success: TLS Client Node Created')
         return True
     except Exception as e:
