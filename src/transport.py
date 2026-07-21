@@ -299,6 +299,8 @@ class TCPTransport(Transport):
         conn.setOnDisconnectedCallback(functools.partial(self._onDisconnected, conn))
 
     def _onIncomingMessageReceived(self, conn, message):
+        peer_node_name = None
+
         if isinstance(message, list) and self._onUtilityMessage(conn, message):
             return
 
@@ -353,7 +355,10 @@ class TCPTransport(Transport):
         self._connections[node] = conn
 
         if self._syncObj.encryptor:
-            conn.encryptor = self._syncObj.encryptor
+            if peer_node_name:
+                conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+            else:
+                print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
 
         conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
 
@@ -433,6 +438,8 @@ class TCPTransport(Transport):
         self._sendSelfAddress(conn)
 
     def _onOutgoingHandshakeResponse(self, conn, message):
+        peer_node_name = None
+
         if isinstance(message, dict) and message.get('type') == 'handshake':
             peer_node_name  = message.get('node_name')
             peer_cert       = message.get('certificate')
@@ -464,7 +471,10 @@ class TCPTransport(Transport):
                 print(Fore.YELLOW + "[OUTGOING] Handshake missing certificate or node_name")
 
         if self._syncObj.encryptor:
-            conn.encryptor = self._syncObj.encryptor
+            if peer_node_name:
+                conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+            else:
+                print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
 
         node = self._connToNode(conn)
         conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
