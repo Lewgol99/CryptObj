@@ -1,4 +1,4 @@
-tls_session import PeerTLSSession
+tls_session import TLS_Session
  
 CA_CERT_FILE = 'certificate.pem'
 SELF_KEY_FILE = 'pki_private_key.pem'
