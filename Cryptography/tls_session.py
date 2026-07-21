@@ -1,7 +1,8 @@
 import struct
 import ssl
+from colorama import Fore, Style, init
 
-from colorama import Fore, Style
+init(autoreset=True)
 
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
