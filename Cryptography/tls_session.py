@@ -1,7 +1,7 @@
 import struct
 import ssl
 
-class PeerTLSSession:
+class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
                  self_cert_file, self_key_file, ca_cert_file):
         self.peer_node_name = peer_node_name
