@@ -147,6 +147,11 @@ if __name__ == '__main__':
         del sys.argv[tls_index:tls_index + 2]
         os.environ['USE_TLS'] = tls_group
 
+        if not os.path.exists('certificate.pem'):
+            from request import fetch_root_certificate
+            print(Fore.CYAN + 'Fetching CA root certificate for TLS...')
+            fetch_root_certificate()
+
     if asymmetric_cipher == 'RSA':
         key_size = int(key_param)
         if key_size not in rsa_keys['key_sizes']:
