@@ -24,7 +24,7 @@ HAS_CRYPTO = True  # Required by pysyncobj
 def getEncryptor(password):
     if os.environ.get('USE_TLS'):
         return TLS_Manager()
-    cipher = os.environ.get['SELECTED_CIPHER']
+    cipher = os.environ['SELECTED_CIPHER']
     AsymmetricEncryptor.set_cipher(cipher)
     return AsymmetricEncryptor(password)
 
