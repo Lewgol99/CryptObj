@@ -76,6 +76,29 @@ def fetch_one_certificate(name, max_retries=30, delay=5):
                 time.sleep(delay)
     return False
 
+def fetch_root_certificate(max_retries=30, delay=5):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(f'{CA_URL}/get_root_certificate', timeout=5)
+            if response.status_code == 200:
+                cert_pem = response.json().get('certificate')
+                if cert_pem:
+                    with open('certificate.pem', 'w') as f:
+                        f.write(cert_pem)
+                    print(Fore.GREEN + '✓ Fetched certificate.pem (CA root)')
+                    return True
+                else:
+                    print(Fore.YELLOW + f'No root certificate yet, retrying in {delay}s...')
+                    time.sleep(delay)
+            else:
+                print(Fore.YELLOW + f'Could not fetch root certificate (status {response.status_code}), retrying...')
+                time.sleep(delay)
+        except Exception as e:
+            print(Fore.RED + f'Error fetching root certificate: {e}')
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+    return False
+
 def fetch_all_certificates(own_node_name):
     print(Fore.CYAN + 'Fetching all certificates in parallel...')
     threads = []
