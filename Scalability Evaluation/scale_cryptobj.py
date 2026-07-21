@@ -160,6 +160,15 @@ if __name__ == '__main__':
 
     key_param = sys.argv[3]
 
+    if '--tls' in sys.argv:
+        tls_index = sys.argv.index('--tls')
+        tls_group = sys.argv[tls_index + 1]
+        if tls_group not in curves['ec_curves']:
+            print(Fore.RED + f'Error: {tls_group} not found in ec_curves.json')
+            sys.exit(-1)
+        del sys.argv[tls_index:tls_index + 2]
+        os.environ['USE_TLS'] = tls_group
+
     if asymmetric_cipher == 'RSA':
         key_size = int(key_param)
         if key_size not in rsa_keys['key_sizes']:
