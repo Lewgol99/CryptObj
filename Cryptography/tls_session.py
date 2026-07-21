@@ -3,10 +3,11 @@ import ssl
 
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
-                 self_cert_file, self_key_file, ca_cert_file):
+                 self_cert_file, self_key_file, ca_cert_file, latency_monitor):
         self.peer_node_name = peer_node_name
         self.handshake_complete = False
         self._pending_plaintext_out = []
+        self.latency_monitor = latency_monitor
 
         self.in_bio = ssl.MemoryBIO()
         self.out_bio = ssl.MemoryBIO()
@@ -35,6 +36,8 @@ class TLS_Session:
             pass
 
     def encrypt_at_time(self, data, timestamp):
+        self.latency_monitor.start_latency()
+
         if not self.handshake_complete:
             self._pending_plaintext_out.append(data)
             self._try_complete_handshake()
@@ -52,9 +55,12 @@ class TLS_Session:
                 written += self.sslobj.write(payload[written:])
 
         out_bytes = self.out_bio.read()
+        self.latency_monitor.stop_latency(f'encrypt_TLS1.3_{self.peer_node_name}')
         return struct.pack('!I', len(out_bytes)) + out_bytes
 
     def decrypt(self, data):
+        self.latency_monitor.start_latency()
+
         length = struct.unpack('!I', data[:4])[0]
         payload = data[4:4 + length]
         if payload:
@@ -74,4 +80,5 @@ class TLS_Session:
             except ssl.SSLWantReadError:
                 pass
 
+        self.latency_monitor.stop_latency(f'decrypt_TLS1.3_{self.peer_node_name}')
         return bytes(plaintext)
