@@ -15,7 +15,7 @@ class TLS_Manager:
  
     def session_for(self, peer_node_name):
         if peer_node_name not in self._sessions:
-            self._sessions[peer_node_name] = PeerTLSSession(
+            self._sessions[peer_node_name] = TLS_Session(
                 self_node_name=self.self_node_name,
                 peer_node_name=peer_node_name,
                 is_client=self._is_client_for(peer_node_name),
