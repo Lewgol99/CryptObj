@@ -60,6 +60,7 @@ class TLS_Session:
         out_bytes = self.out_bio.read()
         frame = struct.pack('!I', len(out_bytes)) + out_bytes
         self.latency_monitor.stop_latency(f'encrypt_TLS1.3_{self.peer_node_name}')
+        self.latency_monitor.save_file('latency_measurements')
 
         hex_fp = frame[:20].hex()
         sent_len = len(payload) if payload else 0
@@ -91,6 +92,7 @@ class TLS_Session:
                 pass
 
         self.latency_monitor.stop_latency(f'decrypt_TLS1.3_{self.peer_node_name}')
+        self.latency_monitor.save_file('latency_measurements')
 
         hex_fp = data[:20].hex()
         print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
