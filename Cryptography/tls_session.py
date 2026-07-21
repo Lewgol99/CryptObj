@@ -1,6 +1,8 @@
 import struct
 import ssl
 
+from colorama import Fore, Style
+
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
                  self_cert_file, self_key_file, ca_cert_file, latency_monitor):
@@ -55,8 +57,15 @@ class TLS_Session:
                 written += self.sslobj.write(payload[written:])
 
         out_bytes = self.out_bio.read()
+        frame = struct.pack('!I', len(out_bytes)) + out_bytes
         self.latency_monitor.stop_latency(f'encrypt_TLS1.3_{self.peer_node_name}')
-        return struct.pack('!I', len(out_bytes)) + out_bytes
+
+        hex_fp = frame[:20].hex()
+        sent_len = len(payload) if payload else 0
+        print(f"SEND {sent_len:>5}B → {len(frame):>5}B  "
+              f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
+
+        return frame
 
     def decrypt(self, data):
         self.latency_monitor.start_latency()
@@ -81,4 +90,9 @@ class TLS_Session:
                 pass
 
         self.latency_monitor.stop_latency(f'decrypt_TLS1.3_{self.peer_node_name}')
+
+        hex_fp = data[:20].hex()
+        print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
+              f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
+
         return bytes(plaintext)
