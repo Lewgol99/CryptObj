@@ -36,4 +36,6 @@ class TLS_Manager:
                 latency_monitor=self.latency_monitor,
             )
         return self._sessions[peer_node_name]
- 
+
+    def _load_certificates(self):
+        pass
