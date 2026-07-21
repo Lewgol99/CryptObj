@@ -14,16 +14,19 @@ from Crypto.Cipher import ChaCha20
 from Crypto.Cipher import Salsa20
 from latency_monitor import LatencyMonitor
 from throughput_monitor import ThroughputMonitor
+import json
+from tls_manager import TLS_Manager
 
 init(autoreset=True)
 HAS_CRYPTO = True  # Required by pysyncobj
 
 # Required by pysyncobj
 def getEncryptor(password):
-    cipher = os.environ.get('SELECTED_CIPHER', 'AES')
+    if os.environ.get('USE_TLS'):
+        return TLS_Manager()
+    cipher = os.environ.get['SELECTED_CIPHER']
     AsymmetricEncryptor.set_cipher(cipher)
     return AsymmetricEncryptor(password)
-
 
 class SymmetricEncryptor:
     _cipher = None
