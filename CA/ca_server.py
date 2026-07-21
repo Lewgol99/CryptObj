@@ -46,3 +46,10 @@ def get_certificate(node_name):
         with open(cert_path, 'r') as f:
             return jsonify({'certificate': f.read()}), 200
     return jsonify({'error': 'Not found'}), 404
+
+@app.route('/get_root_certificate')
+def get_root_certificate():
+    if os.path.exists('certificate.pem'):
+        with open('certificate.pem', 'r') as f:
+            return jsonify({'certificate': f.read()}), 200
+    return jsonify({'error': 'Not found'}), 404
