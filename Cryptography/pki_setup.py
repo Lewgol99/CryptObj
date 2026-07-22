@@ -22,10 +22,10 @@ class PKI:
         self.private_key = self.keygen.private_key
         self.keygen.Serialize_Public_Key()
 
-    def generate_csr(self):
+    def generate_csr(self, node_name):
         if self.private_key is None:
             print(Fore.RED + 'Error: Generate Keys First!')
             return None
         csr = CertificateSigningRequest(self.private_key)
-        csr.Create_CSR()
+        csr.Create_CSR(node_name)
         csr.Save_CSR()
