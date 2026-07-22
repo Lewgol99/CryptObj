@@ -515,6 +515,13 @@ class TCPTransport(Transport):
 
     def _onDisconnected(self, conn):
         self._unknownConnections.discard(conn)
+        # Clear any TLS/encryptor state tied to this now-dead connection.
+        # Without this, a reconnect on the same TcpConnection object still
+        # carries the old, already-failed TLS_Session on conn.encryptor —
+        # so _sendSelfAddress (which must send the initial handshake
+        # unencrypted) instead runs it through a dead SSL object, producing
+        # ssl.SSLSyscallError instead of a clean fresh handshake.
+        conn.encryptor = None
         node = self._connToNode(conn)
         if node is not None:
             if node in self._nodes:
