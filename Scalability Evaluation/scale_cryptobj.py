@@ -197,12 +197,12 @@ if __name__ == '__main__':
         if asymmetric_cipher == 'RSA':
             pki = PKI()
             pki.generate_keys(key_size)
-            pki.generate_csr()
+            pki.generate_csr(node_name)
             result = submit_csr_to_ca(node_name)
         elif asymmetric_cipher == 'ECC':
             pki = PKI()
             pki.generate_ecc_keys(curve_name)
-            pki.generate_csr()
+            pki.generate_csr(node_name)
             result = submit_csr_to_ca(node_name)
         print(Fore.CYAN + 'Fetching all certificates in parallel...')
         fetch_all_certificates(node_name)
