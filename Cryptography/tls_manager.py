@@ -25,16 +25,15 @@ class TLS_Manager:
         return self.self_address > self.peer_addresses[peer_node_name]
  
     def session_for(self, peer_node_name):
-        if peer_node_name not in self._sessions:
-            self._sessions[peer_node_name] = TLS_Session(
-                self_node_name=self.self_node_name,
-                peer_node_name=peer_node_name,
-                is_client=self._is_client_for(peer_node_name),
-                self_cert_file=f'{self.self_node_name}_certificate.pem',
-                self_key_file=SELF_KEY_FILE,
-                ca_cert_file=CA_CERT_FILE,
-                latency_monitor=self.latency_monitor,
-            )
+        self._sessions[peer_node_name] = TLS_Session(
+            self_node_name=self.self_node_name,
+            peer_node_name=peer_node_name,
+            is_client=self._is_client_for(peer_node_name),
+            self_cert_file=f'{self.self_node_name}_certificate.pem',
+            self_key_file=SELF_KEY_FILE,
+            ca_cert_file=CA_CERT_FILE,
+            latency_monitor=self.latency_monitor,
+        )
         return self._sessions[peer_node_name]
 
     def _load_certificates(self):
