@@ -1,5 +1,7 @@
 import struct
 import ssl
+import pickle
+import zlib
 from colorama import Fore, Style, init
 
 init(autoreset=True)
@@ -82,9 +84,6 @@ class TLS_Session:
         try:
             self.latency_monitor.start_latency()
 
-            # First 8 bytes are the embedded timestamp (see encrypt_at_time /
-            # extract_timestamp) — not needed here since pysyncobj already
-            # called extract_timestamp() on the same raw `data` before this.
             data = data[8:]
 
             length = struct.unpack('!I', data[:4])[0]
@@ -112,6 +111,9 @@ class TLS_Session:
             hex_fp = data[:20].hex()
             print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
+
+            if not plaintext:
+                return zlib.compress(pickle.dumps(None))
 
             return bytes(plaintext)
         except Exception:
