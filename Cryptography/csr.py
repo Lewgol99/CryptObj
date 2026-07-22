@@ -9,13 +9,16 @@ class CertificateSigningRequest:
         self.private_key = private_key
         self.csr = None
 
-    def Create_CSR(self):
+    def Create_CSR(self, node_name):
         try:
             self.csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
                 x509.NameAttribute(NameOID.COUNTRY_NAME, "UK"),
-                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "dollar"),  
-                x509.NameAttribute(NameOID.COMMON_NAME, "pound"),
-            ])).sign(self.private_key, hashes.SHA256())
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "dollar"),
+                x509.NameAttribute(NameOID.COMMON_NAME, node_name),
+            ])).add_extension(
+                x509.SubjectAlternativeName([x509.DNSName(node_name)]),
+                critical=False,
+            ).sign(self.private_key, hashes.SHA256())
             print(Fore.GREEN + 'Success: CSR Successfully Performed!')  
             return self.csr 
         except Exception as e:
