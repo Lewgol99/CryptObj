@@ -11,6 +11,7 @@ class TLS_Session:
         self.handshake_complete = False
         self._pending_plaintext_out = []
         self.latency_monitor = latency_monitor
+        self._recv_counter = 0
 
         self.in_bio = ssl.MemoryBIO()
         self.out_bio = ssl.MemoryBIO()
@@ -68,6 +69,10 @@ class TLS_Session:
               f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
         return frame
+
+    def extract_timestamp(self, data):
+        self._recv_counter += 1
+        return self._recv_counter
 
     def decrypt(self, data):
         self.latency_monitor.start_latency()
