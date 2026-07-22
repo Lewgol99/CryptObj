@@ -11,7 +11,6 @@ class TLS_Session:
         self.handshake_complete = False
         self._pending_plaintext_out = []
         self.latency_monitor = latency_monitor
-        self._recv_counter = 0
 
         self.in_bio = ssl.MemoryBIO()
         self.out_bio = ssl.MemoryBIO()
@@ -59,7 +58,7 @@ class TLS_Session:
                 written += self.sslobj.write(payload[written:])
 
         out_bytes = self.out_bio.read()
-        frame = struct.pack('!I', len(out_bytes)) + out_bytes
+        frame = struct.pack('!Q', timestamp) + struct.pack('!I', len(out_bytes)) + out_bytes
         self.latency_monitor.stop_latency(f'encrypt_TLS1.3_{self.peer_node_name}')
         self.latency_monitor.save_file('latency_measurements')
 
@@ -71,36 +70,53 @@ class TLS_Session:
         return frame
 
     def extract_timestamp(self, data):
-        self._recv_counter += 1
-        return self._recv_counter
+        try:
+            return struct.unpack('!Q', data[:8])[0]
+        except Exception:
+            import traceback
+            print(f"{Fore.RED}[TLS_Session.extract_timestamp] error for peer {self.peer_node_name}:{Style.RESET_ALL}")
+            traceback.print_exc()
+            raise
 
     def decrypt(self, data):
-        self.latency_monitor.start_latency()
+        try:
+            self.latency_monitor.start_latency()
 
-        length = struct.unpack('!I', data[:4])[0]
-        payload = data[4:4 + length]
-        if payload:
-            self.in_bio.write(payload)
+            # First 8 bytes are the embedded timestamp (see encrypt_at_time /
+            # extract_timestamp) — not needed here since pysyncobj already
+            # called extract_timestamp() on the same raw `data` before this.
+            data = data[8:]
 
-        if not self.handshake_complete:
-            self._try_complete_handshake()
+            length = struct.unpack('!I', data[:4])[0]
+            payload = data[4:4 + length]
+            if payload:
+                self.in_bio.write(payload)
 
-        plaintext = bytearray()
-        if self.handshake_complete:
-            try:
-                while True:
-                    chunk = self.sslobj.read(65536)
-                    if not chunk:
-                        break
-                    plaintext += chunk
-            except ssl.SSLWantReadError:
-                pass
+            if not self.handshake_complete:
+                self._try_complete_handshake()
 
-        self.latency_monitor.stop_latency(f'decrypt_TLS1.3_{self.peer_node_name}')
-        self.latency_monitor.save_file('latency_measurements')
+            plaintext = bytearray()
+            if self.handshake_complete:
+                try:
+                    while True:
+                        chunk = self.sslobj.read(65536)
+                        if not chunk:
+                            break
+                        plaintext += chunk
+                except ssl.SSLWantReadError:
+                    pass
 
-        hex_fp = data[:20].hex()
-        print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
-              f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
+            self.latency_monitor.stop_latency(f'decrypt_TLS1.3_{self.peer_node_name}')
+            self.latency_monitor.save_file('latency_measurements')
 
-        return bytes(plaintext)
+            hex_fp = data[:20].hex()
+            print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
+                  f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
+
+            return bytes(plaintext)
+        except Exception:
+            import traceback
+            print(f"{Fore.RED}[TLS_Session.decrypt] error for peer {self.peer_node_name} "
+                  f"(data_len={len(data)}, handshake_complete={self.handshake_complete}):{Style.RESET_ALL}")
+            traceback.print_exc()
+            raise
