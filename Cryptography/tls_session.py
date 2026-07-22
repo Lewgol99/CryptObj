@@ -39,6 +39,13 @@ class TLS_Session:
             self.handshake_complete = True
         except ssl.SSLWantReadError:
             pass
+        except Exception:
+            
+            import traceback
+            print(f"{Fore.RED}[TLS_Session._try_complete_handshake] handshake failed for peer "
+                  f"{self.peer_node_name}:{Style.RESET_ALL}")
+            traceback.print_exc()
+            raise
 
     def encrypt_at_time(self, data, timestamp):
         self.latency_monitor.start_latency()
@@ -113,10 +120,12 @@ class TLS_Session:
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
             if not plaintext:
+
                 return zlib.compress(pickle.dumps(None))
 
             return bytes(plaintext)
         except Exception:
+
             import traceback
             print(f"{Fore.RED}[TLS_Session.decrypt] error for peer {self.peer_node_name} "
                   f"(data_len={len(data)}, handshake_complete={self.handshake_complete}):{Style.RESET_ALL}")
