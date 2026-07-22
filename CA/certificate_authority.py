@@ -86,7 +86,7 @@ class CertificateAuthority:
             print(Fore.RED + f'Error: CA Not Initialized!')
             return None
         try:
-            self.cert = x509.CertificateBuilder().subject_name(
+            builder = x509.CertificateBuilder().subject_name(
                 csr.subject
             ).issuer_name(
                 self.root_cert.subject
@@ -98,7 +98,11 @@ class CertificateAuthority:
                 datetime.datetime.now(datetime.timezone.utc)
             ).not_valid_after(
                 datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365*10)
-            ).sign(self.root_key, hashes.SHA256())
+            )
+
+            for extension in csr.extensions:
+                builder = builder.add_extension(extension.value, critical=extension.critical)
+            self.cert = builder.sign(self.root_key, hashes.SHA256())
             print(Fore.GREEN + 'Success: Certificate Issued!!')
             return self.cert
         except Exception as e:
