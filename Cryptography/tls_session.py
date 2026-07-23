@@ -69,8 +69,7 @@ class TLS_Session:
         except Exception:
             import traceback
             print(f"{Fore.RED}[TLS_Session._try_complete_handshake] handshake failed for peer "
-                  f"{self.peer_node_name} (session_id={id(self)}, sslobj_id={id(self.sslobj)}, "
-                  f"in_bio_pending={self.in_bio.pending}):{Style.RESET_ALL}")
+                  f"{self.peer_node_name} (in_bio_pending={self.in_bio.pending}):{Style.RESET_ALL}")
             traceback.print_exc()
             raise
 
@@ -103,7 +102,7 @@ class TLS_Session:
 
         hex_fp = frame[:20].hex()
         sent_len = len(payload) if payload else 0
-        print(f"SEND {sent_len:>5}B → {len(frame):>5}B  session_id={id(self)}  "
+        print(f"SEND {sent_len:>5}B → {len(frame):>5}B  "
               f"[{self._tls_info()}]  "
               f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
@@ -147,7 +146,7 @@ class TLS_Session:
             self.latency_monitor.save_file('latency_measurements')
 
             hex_fp = data[:20].hex()
-            print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  session_id={id(self)}  "
+            print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  "
                   f"[{self._tls_info()}]  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
@@ -160,8 +159,7 @@ class TLS_Session:
 
             raw_hex = data.hex()
             print(f"{Fore.RED}[TLS_Session.decrypt] error for peer {self.peer_node_name} "
-                  f"(data_len={len(data)}, handshake_complete={self.handshake_complete}, "
-                  f"session_id={id(self)}, sslobj_id={id(self.sslobj)}):{Style.RESET_ALL}")
+                  f"(data_len={len(data)}, handshake_complete={self.handshake_complete}):{Style.RESET_ALL}")
             print(f"{Fore.RED}  raw bytes (post-timestamp-strip): {raw_hex}{Style.RESET_ALL}")
             traceback.print_exc()
             raise
