@@ -6,6 +6,13 @@ from latency_monitor import LatencyMonitor
 CA_CERT_FILE = 'certificate.pem'
 SELF_KEY_FILE = 'pki_private_key.pem'
 
+def _select_cipher_suite():
+    with open('tls_ciphers.json', 'r') as f:
+        suites = json.load(f)['cipher_suites']
+    selected = os.environ.get('SELECTED_CIPHER', '')
+    matches = [s for s in suites if selected.upper() in s.upper()]
+    return matches[0] if matches else ':'.join(suites)
+
 class TLS_Manager:
     def __init__(self):
         nodes_file = 'scale_nodes.json' if os.path.exists('scale_nodes.json') else 'nodes.json'
@@ -20,6 +27,7 @@ class TLS_Manager:
         }
         self.latency_monitor = LatencyMonitor()
         self._sessions = {}
+        self.cipher_suite = _select_cipher_suite()
      
     def _is_client_for(self, peer_node_name):
         return self.self_address > self.peer_addresses[peer_node_name]
@@ -33,6 +41,7 @@ class TLS_Manager:
             self_key_file=SELF_KEY_FILE,
             ca_cert_file=CA_CERT_FILE,
             latency_monitor=self.latency_monitor,
+            cipher_suite=self.cipher_suite,
         )
         return self._sessions[peer_node_name]
 
