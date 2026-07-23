@@ -6,6 +6,20 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
+_warned_no_set_ciphersuites = False
+
+def _apply_cipher_suite(ctx, cipher_suite, peer_node_name):
+    global _warned_no_set_ciphersuites
+    if not cipher_suite:
+        return
+    if hasattr(ctx, 'set_ciphersuites'):
+        ctx.set_ciphersuites(cipher_suite)
+    elif not _warned_no_set_ciphersuites:
+        _warned_no_set_ciphersuites = True
+        print(f"{Fore.YELLOW}[TLS_Session] This Python build's ssl module has no "
+              f"set_ciphersuites() — cannot enforce a specific TLS 1.3 cipher "
+              f"suite. Falling back to default negotiation.{Style.RESET_ALL}")
+
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
                  self_cert_file, self_key_file, ca_cert_file, latency_monitor,
@@ -21,19 +35,14 @@ class TLS_Session:
         if is_client:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-            if cipher_suite:
-                # set_ciphersuites() (not set_ciphers()) is the TLS 1.3-
-                # specific API — set_ciphers() only affects the TLS <=1.2
-                # suite list and silently has no effect on a 1.3-only context.
-                ctx.set_ciphersuites(cipher_suite)
+            _apply_cipher_suite(ctx, cipher_suite, peer_node_name)
             ctx.load_verify_locations(cafile=ca_cert_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio,
                                         server_hostname=peer_node_name)
         else:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-            if cipher_suite:
-                ctx.set_ciphersuites(cipher_suite)
+            _apply_cipher_suite(ctx, cipher_suite, peer_node_name)
             ctx.load_cert_chain(certfile=self_cert_file, keyfile=self_key_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio, server_side=True)
 
