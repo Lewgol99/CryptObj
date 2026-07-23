@@ -23,12 +23,11 @@ def _apply_cipher_suite(ctx, cipher_suite, peer_node_name):
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
                  self_cert_file, self_key_file, ca_cert_file, latency_monitor,
-                 cipher_suite=None, cipher_name=None, curve_name=None):
+                 cipher_suite=None, curve_name=None):
         self.peer_node_name = peer_node_name
         self.handshake_complete = False
         self._pending_plaintext_out = []
         self.latency_monitor = latency_monitor
-        self.cipher_name = cipher_name
         self.curve_name = curve_name
         self._requested_cipher_suite = cipher_suite
 
@@ -61,7 +60,12 @@ class TLS_Session:
         return f"{version} {cipher_name} curve(configured)={curve}"
 
     def _csv_tag(self):
-        return f"{self.cipher_name}-{self.curve_name}"
+        if self.handshake_complete:
+            cipher = self.sslobj.cipher()
+            cipher_tag = cipher[0] if cipher else '?'
+        else:
+            cipher_tag = 'handshake-incomplete'
+        return f"{cipher_tag}-{self.curve_name}"
 
     def _try_complete_handshake(self):
         if self.handshake_complete:
