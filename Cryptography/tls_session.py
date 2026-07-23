@@ -8,7 +8,8 @@ init(autoreset=True)
 
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
-                 self_cert_file, self_key_file, ca_cert_file, latency_monitor):
+                 self_cert_file, self_key_file, ca_cert_file, latency_monitor,
+                 cipher_suite=None):
         self.peer_node_name = peer_node_name
         self.handshake_complete = False
         self._pending_plaintext_out = []
@@ -20,12 +21,19 @@ class TLS_Session:
         if is_client:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+            if cipher_suite:
+                # set_ciphersuites() (not set_ciphers()) is the TLS 1.3-
+                # specific API — set_ciphers() only affects the TLS <=1.2
+                # suite list and silently has no effect on a 1.3-only context.
+                ctx.set_ciphersuites(cipher_suite)
             ctx.load_verify_locations(cafile=ca_cert_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio,
                                         server_hostname=peer_node_name)
         else:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+            if cipher_suite:
+                ctx.set_ciphersuites(cipher_suite)
             ctx.load_cert_chain(certfile=self_cert_file, keyfile=self_key_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio, server_side=True)
 
@@ -57,11 +65,6 @@ class TLS_Session:
                 payload = b''.join(self._pending_plaintext_out)
                 self._pending_plaintext_out = []
             else:
-                # Handshake still not done — keep this message queued rather
-                # than silently discarding it. Previously
-                # _pending_plaintext_out was cleared here unconditionally,
-                # so every real message that arrived while the handshake was
-                # incomplete got dropped permanently, one at a time.
                 payload = None
         elif self._pending_plaintext_out:
             payload = b''.join(self._pending_plaintext_out) + data
