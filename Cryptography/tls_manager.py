@@ -28,7 +28,6 @@ class TLS_Manager:
         self.latency_monitor = LatencyMonitor()
         self._sessions = {}
         self.cipher_suite = _select_cipher_suite()
-        self.cipher_name = os.environ.get('SELECTED_CIPHER', '?')
         self.curve_name = os.environ.get('USE_TLS')
      
     def _is_client_for(self, peer_node_name):
@@ -44,7 +43,6 @@ class TLS_Manager:
             ca_cert_file=CA_CERT_FILE,
             latency_monitor=self.latency_monitor,
             cipher_suite=self.cipher_suite,
-            cipher_name=self.cipher_name,
             curve_name=self.curve_name,
         )
         return self._sessions[peer_node_name]
