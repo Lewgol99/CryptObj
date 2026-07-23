@@ -53,8 +53,16 @@ class TLS_Session:
         if not self.handshake_complete:
             self._pending_plaintext_out.append(data)
             self._try_complete_handshake()
-            payload = b''.join(self._pending_plaintext_out) if self.handshake_complete else None
-            self._pending_plaintext_out = []
+            if self.handshake_complete:
+                payload = b''.join(self._pending_plaintext_out)
+                self._pending_plaintext_out = []
+            else:
+                # Handshake still not done — keep this message queued rather
+                # than silently discarding it. Previously
+                # _pending_plaintext_out was cleared here unconditionally,
+                # so every real message that arrived while the handshake was
+                # incomplete got dropped permanently, one at a time.
+                payload = None
         elif self._pending_plaintext_out:
             payload = b''.join(self._pending_plaintext_out) + data
             self._pending_plaintext_out = []
