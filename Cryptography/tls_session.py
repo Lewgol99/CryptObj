@@ -23,11 +23,12 @@ def _apply_cipher_suite(ctx, cipher_suite, peer_node_name):
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
                  self_cert_file, self_key_file, ca_cert_file, latency_monitor,
-                 cipher_suite=None):
+                 cipher_suite=None, curve_name=None):
         self.peer_node_name = peer_node_name
         self.handshake_complete = False
         self._pending_plaintext_out = []
         self.latency_monitor = latency_monitor
+        self.curve_name = curve_name
 
         self.in_bio = ssl.MemoryBIO()
         self.out_bio = ssl.MemoryBIO()
@@ -47,6 +48,15 @@ class TLS_Session:
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio, server_side=True)
 
         self._try_complete_handshake()
+
+    def _tls_info(self):
+        if not self.handshake_complete:
+            return "handshake in progress"
+        cipher = self.sslobj.cipher()
+        cipher_name = cipher[0] if cipher else "?"
+        version = self.sslobj.version() or "?"
+        curve = self.curve_name or "?"
+        return f"{version} {cipher_name} curve(configured)={curve}"
 
     def _try_complete_handshake(self):
         if self.handshake_complete:
@@ -94,6 +104,7 @@ class TLS_Session:
         hex_fp = frame[:20].hex()
         sent_len = len(payload) if payload else 0
         print(f"SEND {sent_len:>5}B → {len(frame):>5}B  session_id={id(self)}  "
+              f"[{self._tls_info()}]  "
               f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
         return frame
@@ -137,6 +148,7 @@ class TLS_Session:
 
             hex_fp = data[:20].hex()
             print(f"RECV {len(data):>5}B → {len(plaintext):>5}B  session_id={id(self)}  "
+                  f"[{self._tls_info()}]  "
                   f"{Fore.RED}{hex_fp}…{Style.RESET_ALL}  ← {self.peer_node_name}")
 
             if not plaintext:
