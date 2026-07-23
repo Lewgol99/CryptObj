@@ -66,7 +66,7 @@ ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.tx
 ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
 ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 ca_host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
-ca_host.appendStartCommand('cd /CryptObj && gunicorn --workers 32 --timeout 120 --bind 0.0.0.0:5000 ca_server:app')
+ca_host.appendStartCommand('cd /CryptObj && gunicorn --preload --workers 32 --timeout 120 --bind 0.0.0.0:5000 ca_server:app')
 ###############################################################################
 # All nodes on net0
 for i in range(1, NUM_NODES + 1):
