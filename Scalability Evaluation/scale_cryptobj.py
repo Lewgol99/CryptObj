@@ -69,6 +69,7 @@ if __name__ == '__main__':
             conf.logCompactionMinTime = 2
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
+            conf.connectionTimeout = 30.0
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
             self.nodes_data = nodes_data
