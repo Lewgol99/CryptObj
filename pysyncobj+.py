@@ -62,6 +62,7 @@ if __name__ == '__main__':
             conf.logCompactionMinTime = 2
             conf.password = "SecureRaft2026"  # triggers pysyncobj to call getEncryptor() from encryptor.py
             conf.node_name = node_name
+            conf.connectionTimeout = 30.0
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
             self.nodes_data = nodes_data
