@@ -1,42 +1,50 @@
 import sys
 import time 
-import json # import to use json data structures
-from colorama import Fore, Style # import colorama for colours
+import json
+import threading
+from colorama import Fore, Style
 from functools import partial
-from pysyncobj import SyncObj, replicated, SyncObjConf # import the original pysyncobj system 
+from pysyncobj import SyncObj, replicated, SyncObjConf
+from pysyncobj.syncobj import _RAFT_STATE
 import datetime
-from pki_setup import PKI # import our setup file
+from pki_setup import PKI
 import os
-from request import get_ca_status, submit_csr_to_ca # import from our server request file
-from encryptor import AsymmetricEncryptor # import from our encryptor file 
-from digital_signature import DigitalSignature # import digital signature
+from request import get_ca_status, submit_csr_to_ca, fetch_all_certificates
+from encryptor import AsymmetricEncryptor
+from digital_signature import DigitalSignature
+from latency_monitor import LatencyMonitor  # unmodified — only imported, not edited
 
 if __name__ == '__main__':
-    
-    with open('nodes.json', 'r') as file: # open our nodes file who will be in the consensus
+
+    NO_CRYPTO = '--no-crypto' in sys.argv
+    if NO_CRYPTO:
+        sys.argv.remove('--no-crypto')
+    # ─────────────────────────────────────────────────────────────────────
+
+    with open('scale_nodes.json', 'r') as file:
         nodes = json.load(file)
 
-    with open('asymmetric_ciphers.json', 'r') as file: # open our ciphers file to select an asymmetric cipher
+    with open('asymmetric_ciphers.json', 'r') as file:
         config = json.load(file)
 
-    with open('rsa_keys.json', 'r') as file:  # open our RSA keys file to load a key
+    with open('rsa_keys.json', 'r') as file:
         rsa_keys = json.load(file)
 
-    with open('ecc_curves.json', 'r') as file: # open our ECC Curves to load a curve
+    with open('ecc_curves.json', 'r') as file:
         curves = json.load(file)
 
-    with open('ciphers.json', 'r') as file: # open our ciphers file to select a symmetric cipher
+    with open('ciphers.json', 'r') as file:
         ciphers = json.load(file)
 
-    if len(sys.argv) < 5: # Define 5 system arguements at the terminal command line
+    if len(sys.argv) < 5:
         print(Fore.YELLOW + f'Usage: {sys.argv[0]} node_name, asymmetric_cipher, key_size/curve, symmetric_cipher')
         print(Fore.YELLOW + f'Available nodes: {list(nodes.keys())}')
-        print(Fore.YELLOW + f'Available asymmetric ciphers: {config["asymmetric_ciphers"]}') # choose RSA or ECC as an arguement
+        print(Fore.YELLOW + f'Available asymmetric ciphers: {config["asymmetric_ciphers"]}')
         print(Fore.YELLOW + f'Available key sizes: {rsa_keys["key_sizes"]}')
         print(Fore.YELLOW + f'Available ciphers: {ciphers["ciphers"]}')
         sys.exit(-1)
 
-    node_name = sys.argv[1] # Make the node name arguement 1
+    node_name = sys.argv[1]
 
     status = get_ca_status()
     print(Fore.YELLOW + f'CA Status: {status}')
@@ -60,9 +68,10 @@ if __name__ == '__main__':
             conf = SyncObjConf()
             conf.logCompactionMinEntries = 2
             conf.logCompactionMinTime = 2
-            conf.password = "SecureRaft2026"  # triggers pysyncobj to call getEncryptor() from encryptor.py
+            conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             conf.connectionTimeout = 30.0
+            conf.onStateChanged = onStateChanged
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
             self.nodes_data = nodes_data
@@ -77,7 +86,6 @@ if __name__ == '__main__':
         def addValue(self, value, cn):
             _set_enc_ctx(f"addValue({value}) → replicate")
             self.__counter += value
-
             print(
                 f"\n  {'─'*54}\n"
                 f"RAFT LOG ENTRY  [{node_name}]  seq={cn}\n"
@@ -96,7 +104,6 @@ if __name__ == '__main__':
 
         def _getLeader(self):
             leader = super()._getLeader()
-            
             if leader != self._last_leader:
                 if leader:
                     try:
@@ -113,9 +120,36 @@ if __name__ == '__main__':
                 self._last_leader = leader
             return leader
 
+    _t = [None]
+    def onStateChanged(o, n):
+        if n == _RAFT_STATE.CANDIDATE: _t[0] = time.perf_counter()
+        elif n == _RAFT_STATE.LEADER and _t[0]:
+            latency_monitor._results_list.append({'measurement': len(latency_monitor._results_list)+1,
+                'label': f'leader_election_{node_name}' + ('_no_crypto' if NO_CRYPTO else ''),
+                'latency_ms': round((time.perf_counter()-_t[0])*1000, 6)})
+            _t[0] = None
+        elif n == _RAFT_STATE.FOLLOWER: _t[0] = None
+
+    # seq -> perf_counter() at send time; keyed because addValue is fire-and-forget
+    # and more than one commit can be in flight when replication is slow.
+    pending_latency = {}
+
     def onAdd(res, err, cnt):
         status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
         print(f"onAdd seq={cnt}  result={res}  {status}")
+
+        start = pending_latency.pop(cnt, None)
+        if start is not None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            label = f'raft_roundtrip_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
+            latency_monitor._results_list.append({
+                'measurement': len(latency_monitor._results_list) + 1,
+                'label': label,
+                'latency_ms': round(latency_ms, 6)
+            })
+            print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
+            if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
+                latency_monitor.save_file('latency_measurements')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -132,7 +166,7 @@ if __name__ == '__main__':
     print(f"  self  : {self_addr}")
     print(f"  peers : {partner_addrs}\n")
 
-    asymmetric_cipher = sys.argv[2] # make selecting the asymmetric cipher arguement 2
+    asymmetric_cipher = sys.argv[2]
     if asymmetric_cipher not in config['asymmetric_ciphers']:
         print(Fore.RED + f'Error: {asymmetric_cipher} not found in asymmetric_ciphers.json')
         sys.exit(-1)
@@ -164,14 +198,12 @@ if __name__ == '__main__':
             print(Fore.RED + f'Error: Curve {curve_name} not Found in ec_curves.json')
             sys.exit(-1)
 
-    selected_ciphers = sys.argv[4] # make Symmetric Cipher terminal arguement 4
+    selected_ciphers = sys.argv[4]
     if selected_ciphers not in ciphers['ciphers']:
         print(Fore.RED + f'Error: Cipher {selected_ciphers} not Found in ciphers.json')
         sys.exit(-1)
-    os.environ['SELECTED_CIPHER'] = selected_ciphers 
-    AsymmetricEncryptor.set_cipher(selected_ciphers) # call the ciphers
-
-    # For Asymmetric Encryption (RSA or ECC)
+    os.environ['SELECTED_CIPHER'] = selected_ciphers
+    AsymmetricEncryptor.set_cipher(selected_ciphers)
 
     if not os.path.exists('pki_private_key.pem'):
         print(Fore.YELLOW + 'No private key found, generating...')
@@ -185,8 +217,9 @@ if __name__ == '__main__':
             pki.generate_ecc_keys(curve_name)
             pki.generate_csr(node_name)
             result = submit_csr_to_ca(node_name)
-
-    # For Digital Signature (RSA or ECC)
+        print(Fore.CYAN + 'Fetching all certificates in parallel...')
+        fetch_all_certificates(node_name)
+        print(Fore.GREEN + 'All certificates fetched — starting Raft!')
 
     if not os.path.exists('signing_private_key.pem'):
         print(Fore.YELLOW + 'No signing key found, generating...')
@@ -205,17 +238,39 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
+    if o.encryptor is not None:
+        latency_monitor = o.encryptor.latency_monitor
+    else:
+        latency_monitor = LatencyMonitor()
+
+    # ── Wait for Raft to stabilise before sending ──────────────────────────
+    print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
+    while o._getLeader() is None:
+        time.sleep(1)
+    print(Fore.GREEN + f'[{node_name}] Leader found — waiting 10s for network to stabilise...')
+    time.sleep(10)
+    print(Fore.GREEN + f'[{node_name}] Starting measurement loop...')
+    # ───────────────────────────────────────────────────────────────────────
+
     n = 0
     old_value = -1
+    RUN_DURATION = 600   # run for 10 minutes — adjust as needed
+    start_time = time.time()
 
     while True:
         time.sleep(0.5)
 
+        # Stop after RUN_DURATION seconds
+        if time.time() - start_time > RUN_DURATION:
+            print(Fore.CYAN + f'[{node_name}] Run duration reached ({RUN_DURATION}s). Stopping.')
+            break
+
         leader = o._getLeader()
 
-        if leader is not None and n < 20:
+        if leader is not None:
             _set_enc_ctx(f"addValue(10) seq={n} → send")
             print(f"  ->  [{node_name}] addValue(10)  seq={n}")
+            pending_latency[n] = time.perf_counter()
             o.addValue(10, n, callback=partial(onAdd, cnt=n))
             n += 1
 
@@ -223,3 +278,6 @@ if __name__ == '__main__':
         if current != old_value:
             old_value = current
             print(f"[{node_name}] counter = {Fore.CYAN}{current}{Style.RESET_ALL}")
+
+    latency_monitor.save_file('latency_measurements')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} measurements to latency_measurements.csv')
