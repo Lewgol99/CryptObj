@@ -133,26 +133,37 @@ if __name__ == '__main__':
             _t[0] = None
         elif n == _RAFT_STATE.FOLLOWER: _t[0] = None
 
-    # seq -> perf_counter() at send time; keyed because addValue is fire-and-forget
-    # and more than one commit can be in flight when replication is slow.
-    pending_latency = {}
+    # SIMPLIFIED — one commit at a time, blocking, no overlap possible.
+    def measure_commit(n):
+        done = threading.Event()
+        outcome = {}
 
-    def onAdd(res, err, cnt):
-        status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
-        print(f"onAdd seq={cnt}  result={res}  {status}")
+        def callback(res, err):
+            outcome['t'] = time.perf_counter()
+            outcome['err'] = err
+            done.set()
 
-        start = pending_latency.pop(cnt, None)
-        if start is not None:
-            latency_ms = (time.perf_counter() - start) * 1000
-            label = f'raft_roundtrip_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
-            latency_monitor._results_list.append({
-                'measurement': len(latency_monitor._results_list) + 1,
-                'label': label,
-                'latency_ms': round(latency_ms, 6)
-            })
-            print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
-            if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
-                latency_monitor.save_file('latency_measurements')
+        start = time.perf_counter()
+        _set_enc_ctx(f"addValue(10) seq={n} → send")
+        o.addValue(10, n, callback=callback)
+        if not done.wait(timeout=10):
+            print(Fore.RED + f'  seq={n} timed out — skipping')
+            return
+
+        if outcome['err'] is not None:
+            print(Fore.RED + f'  seq={n} failed: {outcome["err"]}')
+            return
+
+        latency_ms = (outcome['t'] - start) * 1000
+        label = f'raft_roundtrip_seq{n}' + ('_no_crypto' if NO_CRYPTO else '')
+        latency_monitor._results_list.append({
+            'measurement': len(latency_monitor._results_list) + 1,
+            'label': label,
+            'latency_ms': round(latency_ms, 6)
+        })
+        print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
+        if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
+            latency_monitor.save_file('latency_measurements')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -255,27 +266,13 @@ if __name__ == '__main__':
     print(Fore.GREEN + f'[{node_name}] Starting measurement loop...')
     # ───────────────────────────────────────────────────────────────────────
 
-    n = 0
+    N_SAMPLES = 1000   # exact number of commits to measure — adjust as needed
     old_value = -1
-    RUN_DURATION = 600   # run for 10 minutes — adjust as needed
-    start_time = time.time()
 
-    while True:
-        time.sleep(0.5)
-
-        # Stop after RUN_DURATION seconds
-        if time.time() - start_time > RUN_DURATION:
-            print(Fore.CYAN + f'[{node_name}] Run duration reached ({RUN_DURATION}s). Stopping.')
-            break
-
-        leader = o._getLeader()
-
-        if leader is not None:
-            _set_enc_ctx(f"addValue(10) seq={n} → send")
-            print(f"  ->  [{node_name}] addValue(10)  seq={n}")
-            pending_latency[n] = time.perf_counter()
-            o.addValue(10, n, callback=partial(onAdd, cnt=n))
-            n += 1
+    for n in range(N_SAMPLES):
+        while o._getLeader() is None:
+            time.sleep(0.5)
+        measure_commit(n)
 
         current = o.getCounter()
         if current != old_value:
