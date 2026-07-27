@@ -181,9 +181,6 @@ class TCPTransport(Transport):
         # this times the send/receive wrapper functions themselves, which run in
         # both crypto and no-crypto modes, giving directly comparable numbers.
         self._sr_latency_monitor = LatencyMonitor()
-        self._sr_since_save = 0
-        self._SR_SAVE_INTERVAL = 20  # same reasoning as scale_cryptobj.py — don't
-                                      # rely solely on a clean shutdown to flush
         self._server = None
         self._connections = {}
         self._unknownConnections = set()
@@ -224,10 +221,13 @@ class TCPTransport(Transport):
             'label': label,
             'latency_ms': round(elapsed_ms, 6)
         })
-        self._sr_since_save += 1
-        if self._sr_since_save >= self._SR_SAVE_INTERVAL:
-            self._sr_latency_monitor.save_file('send_receive_latency')
-            self._sr_since_save = 0
+        # Append only the new row (O(1)) instead of periodically rewriting the
+        # whole (ever-growing) list to disk via pandas (O(n) per flush, O(n^2)
+        # over the life of the run). The old version stalled the transport's
+        # send/receive path for longer and longer as the run progressed,
+        # which showed up as a spurious upward trend in commit latency that
+        # had nothing to do with Raft or the crypto config under test.
+        self._sr_latency_monitor.append_last('send_receive_latency')
 
     def _dbg_print_stats(self):
         print(Fore.CYAN + '[SIGN STATS] ──────────────────────────────────────────')
@@ -515,12 +515,6 @@ class TCPTransport(Transport):
 
     def _onDisconnected(self, conn):
         self._unknownConnections.discard(conn)
-        # Clear any TLS/encryptor state tied to this now-dead connection.
-        # Without this, a reconnect on the same TcpConnection object still
-        # carries the old, already-failed TLS_Session on conn.encryptor —
-        # so _sendSelfAddress (which must send the initial handshake
-        # unencrypted) instead runs it through a dead SSL object, producing
-        # ssl.SSLSyscallError instead of a clean fresh handshake.
         conn.encryptor = None
         node = self._connToNode(conn)
         if node is not None:
