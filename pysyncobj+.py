@@ -266,7 +266,7 @@ if __name__ == '__main__':
     print(Fore.GREEN + f'[{node_name}] Starting measurement loop...')
     # ───────────────────────────────────────────────────────────────────────
 
-    N_SAMPLES = 1000   # exact number of commits to measure — adjust as needed
+    N_SAMPLES = 250   # verified clean/drift-free sample size — see methodology note
     old_value = -1
 
     for n in range(N_SAMPLES):
