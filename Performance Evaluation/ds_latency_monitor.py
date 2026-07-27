@@ -7,6 +7,7 @@ class DSLatencyMonitor:
         self.start = None
         self.stop = None
         self.max_measurements = max_measurements
+        self._autosaved = False
 
     def start_latency(self):
         self.start = time.perf_counter()
@@ -23,14 +24,15 @@ class DSLatencyMonitor:
         })
         print(f"Measurement {measurement} [{label}]: {latency:.6f} ms")
 
-        # Fixed: save only at 1000 measurements not every packet
-        if len(self._results_list) >= self.max_measurements:
+        if not self._autosaved and len(self._results_list) >= self.max_measurements:
             self.save_file('ds_latency_measurements')
+            self._autosaved = True
 
         return latency
 
     def reset(self):  # Added: reset between test runs
         self._results_list = []
+        self._autosaved = False
 
     def save_file(self, filename):
         if self._results_list:
