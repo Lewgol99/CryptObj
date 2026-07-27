@@ -1,4 +1,5 @@
 import sys
+import signal
 import time 
 import json
 import threading
@@ -66,18 +67,6 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
-            # CHANGED: these were logCompactionMinEntries=2 / logCompactionMinTime=2,
-            # which triggers log compaction after just 2 entries or 2 seconds.
-            # That's aggressive enough to truncate a follower's log journal
-            # to empty while it's still catching up, which pysyncobj's
-            # MemoryJournal.__getitem__ doesn't guard against - it then
-            # throws IndexError: list index out of range on every internal
-            # tick from then on (self.__raftLog[0][1] / [-1][1] on an empty
-            # list), permanently wedging that node for the rest of the run.
-            # Using PySyncObj's own defaults (logCompactionMinEntries=5000)
-            # and raising logCompactionMinTime well above the total expected
-            # run length (baseline + load phases) so compaction can't fire
-            # mid-run at all - same fix already applied in pysyncobj+.py.
             conf.logCompactionMinTime = 7200
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
@@ -217,9 +206,6 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
-    # Dedicated monitors: baseline (Phase 1, closed-loop) is kept fully
-    # separate from load (Phase 2, open-loop) so the two measurement
-    # regimes can never end up averaged into one number.
     latency_monitor = LatencyMonitor()   # baseline commit latency (closed-loop)
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
@@ -230,12 +216,12 @@ if __name__ == '__main__':
     time.sleep(10)
     # ───────────────────────────────────────────────────────────────────────
 
-    # ── PHASE 1: closed-loop baseline commit latency ────────────────────────
-    # One commit at a time, blocking until it's actually committed before
-    # sending the next — no overlap, so nothing here can queue/contend.
-    # This is the number that belongs in the paper as "Raft commit latency".
     print(Fore.GREEN + f'[{node_name}] Starting baseline (closed-loop) measurement...')
-    N_BASELINE_SAMPLES = 250
+    print(Fore.YELLOW + f'[{node_name}] Running continuously — stop with Ctrl+C or `docker stop` when you have enough samples.')
+
+    def _handle_sigterm(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     def measure_commit_blocking(seq):
         done = threading.Event()
@@ -274,10 +260,15 @@ if __name__ == '__main__':
         print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
         latency_monitor.append_last('commit_measurements')
 
-    for seq in range(N_BASELINE_SAMPLES):
-        while o._getLeader() is None:
-            time.sleep(0.5)
-        measure_commit_blocking(seq)
+    seq = 0
+    try:
+        while True:
+            while o._getLeader() is None:
+                time.sleep(0.5)
+            measure_commit_blocking(seq)
+            seq += 1
+    except KeyboardInterrupt:
+        print(Fore.YELLOW + f'\n[{node_name}] Stopped after {seq} samples.')
 
     latency_monitor.save_file('commit_measurements')
     print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} '
