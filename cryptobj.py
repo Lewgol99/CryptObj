@@ -20,6 +20,12 @@ if __name__ == '__main__':
     NO_CRYPTO = '--no-crypto' in sys.argv
     if NO_CRYPTO:
         sys.argv.remove('--no-crypto')
+
+    RUN_DURATION_SECONDS = None
+    if '--duration' in sys.argv:
+        duration_index = sys.argv.index('--duration')
+        RUN_DURATION_SECONDS = float(sys.argv[duration_index + 1])
+        del sys.argv[duration_index:duration_index + 2]
     # ─────────────────────────────────────────────────────────────────────
 
     with open('scale_nodes.json', 'r') as file:
@@ -225,7 +231,7 @@ if __name__ == '__main__':
         exit(0)
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
-
+    
     latency_monitor = LatencyMonitor()   # baseline commit latency (closed-loop)
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
@@ -281,8 +287,16 @@ if __name__ == '__main__':
         latency_monitor.append_last('commit_measurements')
 
     seq = 0
+    run_start = time.perf_counter()
+    if RUN_DURATION_SECONDS is not None:
+        print(Fore.YELLOW + f'[{node_name}] Will stop after {RUN_DURATION_SECONDS:.0f}s '
+              f'of wall-clock time (Ctrl+C also still works).')
     try:
         while True:
+            if RUN_DURATION_SECONDS is not None and (time.perf_counter() - run_start) >= RUN_DURATION_SECONDS:
+                print(Fore.YELLOW + f'\n[{node_name}] Duration limit reached '
+                      f'({RUN_DURATION_SECONDS:.0f}s) after {seq} samples. Stopping.')
+                break
             while o._getLeader() is None:
                 time.sleep(0.5)
             measure_commit_blocking(seq)
