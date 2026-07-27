@@ -7,7 +7,7 @@ class LatencyMonitor:
         self.start = None
         self.stop = None
         self.max_measurements = max_measurements
-        self._autosaved = False  # NEW: tracks whether the threshold-triggered save has already fired
+        self._autosaved = False 
 
     def start_latency(self):
         self.start = time.perf_counter()
