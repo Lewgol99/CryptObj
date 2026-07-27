@@ -66,11 +66,11 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
-            # Using PySyncObj's own defaults (logCompactionMinEntries=5000,
-            # logCompactionMinTime=300s) rather than overriding them — the
-            # previous values (2 entries / 2s) triggered near-continuous log
-            # serialization throughout the run, which was the likely cause of
-            # growing gaps and multi-second latency spikes later in long runs.
+            # Using PySyncObj's own defaults (logCompactionMinEntries=5000)
+            # but raising logCompactionMinTime well above expected run length
+            # so compaction cannot fire mid-run and contaminate the commit-
+            # latency measurements with unrelated serialization stalls.
+            conf.logCompactionMinTime = 3600
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             conf.connectionTimeout = 30.0
