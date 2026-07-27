@@ -13,7 +13,6 @@ from Crypto.Cipher import AES
 from Crypto.Cipher import ChaCha20
 from Crypto.Cipher import Salsa20
 from latency_monitor import LatencyMonitor
-from throughput_monitor import ThroughputMonitor
 import json
 from tls_manager import TLS_Manager
 
@@ -75,7 +74,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
     def __init__(self, password=None):
         super().__init__()
         self.latency_monitor = LatencyMonitor()
-        self.throughput_monitor = ThroughputMonitor()
 
         with open('pki_private_key.pem', 'rb') as f:
             self.private_key = serialization.load_pem_private_key(
@@ -181,7 +179,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
 
     def encrypt_at_time(self, data, ts):  # Required by pysyncobj
         self.latency_monitor.start_latency()
-        self.throughput_monitor.start_throughput()
         try:
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             if not self.enabled:
@@ -204,7 +201,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
 
             packet += encrypted_data
             self.latency_monitor.stop_latency(f'encrypt_{self._cipher}_{self.key_info}')
-            self.throughput_monitor.stop_throughput(len(data), f'encrypt_{self._cipher}_{self.key_info}')
 
             hex_fp = packet[:20].hex()
             print(f"SEND {len(data):>5}B → {len(packet):>5}B  "
@@ -217,7 +213,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
 
     def decrypt(self, packet):  # Required by pysyncobj
         self.latency_monitor.start_latency()
-        self.throughput_monitor.start_throughput()
         try:
             if len(packet) < 14:
                 return packet[8:]
@@ -253,7 +248,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
                             sym_key = candidate
                             # Log and return directly for ECC
                             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
-                            self.throughput_monitor.stop_throughput(len(result), f'decrypt_{self._cipher}_{self.key_info}')
                             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
                             hex_fp = packet[:20].hex()
                             print(f"RECV {len(packet):>5}B → {len(result):>5}B  "
@@ -272,7 +266,6 @@ class AsymmetricEncryptor(SymmetricEncryptor):  # Required by pysyncobj
             decrypted_data = self._verify_hmac(sym_key, decrypted_data)
 
             self.latency_monitor.stop_latency(f'decrypt_{self._cipher}_{self.key_info}')
-            self.throughput_monitor.stop_throughput(len(decrypted_data), f'decrypt_{self._cipher}_{self.key_info}')
 
             ctx = f"  ← {self._raft_context}" if self._raft_context else ""
             hex_fp = packet[:20].hex()
