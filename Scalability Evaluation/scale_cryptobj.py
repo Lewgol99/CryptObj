@@ -67,7 +67,6 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
-            conf.logCompactionMinTime = 7200
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             conf.connectionTimeout = 30.0
@@ -206,6 +205,9 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
+    # Dedicated monitors: baseline (Phase 1, closed-loop) is kept fully
+    # separate from load (Phase 2, open-loop) so the two measurement
+    # regimes can never end up averaged into one number.
     latency_monitor = LatencyMonitor()   # baseline commit latency (closed-loop)
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
