@@ -66,10 +66,6 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
-            # Using PySyncObj's own defaults (logCompactionMinEntries=5000)
-            # but raising logCompactionMinTime well above expected run length
-            # so compaction cannot fire mid-run and contaminate the commit-
-            # latency measurements with unrelated serialization stalls.
             conf.logCompactionMinTime = 3600
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
@@ -162,8 +158,7 @@ if __name__ == '__main__':
             'latency_ms': round(latency_ms, 6)
         })
         print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
-        if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
-            latency_monitor.save_file('commit_measurements')
+        latency_monitor.append_last('commit_measurements')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -252,12 +247,6 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
-    # CHANGED: always use a dedicated monitor for commit-latency samples,
-    # instead of reusing o.encryptor.latency_monitor. That monitor also
-    # records every TLS encrypt/decrypt (i.e. every heartbeat/AppendEntries,
-    # not just our 250 commit samples), so it crossed the autosave
-    # threshold almost immediately and the resulting repeated CSV writes
-    # were stalling the commit-timing path itself.
     latency_monitor = LatencyMonitor()
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
