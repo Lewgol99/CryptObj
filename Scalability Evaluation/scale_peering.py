@@ -83,7 +83,7 @@ for i in range(1, NUM_NODES + 1):
     host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
     host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
     host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
-    host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/scale_cryptobj.py node{i} RSA 2048 AES')
+    host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/cryptobj.py node{i} RSA 2048 AES')
 ###############################################################################
 emu.addLayer(base)
 emu.addLayer(routing)
