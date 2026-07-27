@@ -5,7 +5,7 @@ import threading
 from colorama import Fore, Style
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
-from pysyncobj.syncobj import _RAFT_STATE
+from pysyncobj.syncobj import _RAFT_STATE, FAIL_REASON
 import datetime
 from pki_setup import PKI
 import os
@@ -66,6 +66,10 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
+            # Using PySyncObj's own defaults (logCompactionMinEntries=5000)
+            # but raising logCompactionMinTime well above expected run length
+            # so compaction cannot fire mid-run and contaminate the commit-
+            # latency measurements with unrelated serialization stalls.
             conf.logCompactionMinTime = 3600
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
@@ -146,7 +150,7 @@ if __name__ == '__main__':
             print(Fore.RED + f'  seq={n} timed out — skipping')
             return
 
-        if outcome['err'] is not None:
+        if outcome['err'] not in (None, FAIL_REASON.SUCCESS):
             print(Fore.RED + f'  seq={n} failed: {outcome["err"]}')
             return
 
@@ -158,6 +162,8 @@ if __name__ == '__main__':
             'latency_ms': round(latency_ms, 6)
         })
         print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
+        # Appends just the one new row (O(1)) so the file grows visibly
+        # after every commit, without rewriting the whole list each time.
         latency_monitor.append_last('commit_measurements')
 
     if node_name not in nodes:
@@ -247,6 +253,12 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
+    # CHANGED: always use a dedicated monitor for commit-latency samples,
+    # instead of reusing o.encryptor.latency_monitor. That monitor also
+    # records every TLS encrypt/decrypt (i.e. every heartbeat/AppendEntries,
+    # not just our 250 commit samples), so it crossed the autosave
+    # threshold almost immediately and the resulting repeated CSV writes
+    # were stalling the commit-timing path itself.
     latency_monitor = LatencyMonitor()
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
