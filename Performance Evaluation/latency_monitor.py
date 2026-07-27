@@ -1,4 +1,6 @@
 import time
+import csv
+import os
 import pandas
 
 class LatencyMonitor:
@@ -7,7 +9,7 @@ class LatencyMonitor:
         self.start = None
         self.stop = None
         self.max_measurements = max_measurements
-        self._autosaved = False 
+        self._autosaved = False  
 
     def start_latency(self):
         self.start = time.perf_counter()
@@ -23,18 +25,30 @@ class LatencyMonitor:
             'latency_ms': round(latency, 6)
         })
         print(f"Measurement {measurement} [{label}]: {latency:.6f} ms")
-
+        
         if not self._autosaved and len(self._results_list) >= self.max_measurements:
             self.save_file('latency_measurements')
             self._autosaved = True
 
         return latency
 
-    def reset(self):  # Added: reset between test runs
+    def reset(self):  
         self._results_list = []
-        self._autosaved = False  # NEW: so autosave can fire again after a reset
+        self._autosaved = False  
 
     def save_file(self, filename):
         if self._results_list:
             df = pandas.DataFrame(self._results_list)
             df.to_csv(f'{filename}.csv', index=False)
+
+    def append_last(self, filename):
+        if not self._results_list:
+            return
+        row = self._results_list[-1]
+        path = f'{filename}.csv'
+        write_header = not os.path.exists(path)
+        with open(path, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['measurement', 'label', 'latency_ms'])
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
