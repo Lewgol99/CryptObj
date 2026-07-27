@@ -5,6 +5,7 @@ import threading
 from colorama import Fore, Style
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
+from pysyncobj.syncobj import FAIL_REASON
 import datetime
 from pki_setup import PKI
 import os
@@ -280,7 +281,7 @@ if __name__ == '__main__':
             })
             return
 
-        if outcome['err'] is not None:
+        if outcome['err'] not in (None, FAIL_REASON.SUCCESS):
             print(Fore.RED + f'  seq={seq} failed: {outcome["err"]}')
             return
 
