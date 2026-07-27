@@ -65,8 +65,19 @@ if __name__ == '__main__':
             print("="*60 + "\n")
 
             conf = SyncObjConf()
-            conf.logCompactionMinEntries = 2
-            conf.logCompactionMinTime = 2
+            # CHANGED: these were logCompactionMinEntries=2 / logCompactionMinTime=2,
+            # which triggers log compaction after just 2 entries or 2 seconds.
+            # That's aggressive enough to truncate a follower's log journal
+            # to empty while it's still catching up, which pysyncobj's
+            # MemoryJournal.__getitem__ doesn't guard against - it then
+            # throws IndexError: list index out of range on every internal
+            # tick from then on (self.__raftLog[0][1] / [-1][1] on an empty
+            # list), permanently wedging that node for the rest of the run.
+            # Using PySyncObj's own defaults (logCompactionMinEntries=5000)
+            # and raising logCompactionMinTime well above the total expected
+            # run length (baseline + load phases) so compaction can't fire
+            # mid-run at all - same fix already applied in pysyncobj+.py.
+            conf.logCompactionMinTime = 7200
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             conf.connectionTimeout = 30.0
@@ -129,14 +140,14 @@ if __name__ == '__main__':
         start = pending_latency.pop(cnt, None)
         if start is not None:
             latency_ms = (time.perf_counter() - start) * 1000
-            label = f'raft_roundtrip_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
-            latency_monitor._results_list.append({
-                'measurement': len(latency_monitor._results_list) + 1,
+            label = f'raft_roundtrip_load_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
+            load_monitor._results_list.append({
+                'measurement': len(load_monitor._results_list) + 1,
                 'label': label,
                 'latency_ms': round(latency_ms, 6)
             })
             print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
-            latency_monitor.append_last('commit_measurements')
+            load_monitor.append_last('commit_measurements_load')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -225,12 +236,11 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
-    # Dedicated monitor for commit-latency samples only — same reasoning as
-    # pysyncobj+.py: o.encryptor.latency_monitor also records every TLS
-    # encrypt/decrypt (i.e. every heartbeat/AppendEntries), which crosses
-    # its autosave threshold almost immediately and was causing repeated
-    # full-file rewrites that stalled the commit-timing path itself.
-    latency_monitor = LatencyMonitor()
+    # Dedicated monitors: baseline (Phase 1, closed-loop) is kept fully
+    # separate from load (Phase 2, open-loop) so the two measurement
+    # regimes can never end up averaged into one number.
+    latency_monitor = LatencyMonitor()   # Phase 1: baseline commit latency
+    load_monitor = LatencyMonitor()      # Phase 2: latency under concurrent load
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
     print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
@@ -238,8 +248,66 @@ if __name__ == '__main__':
         time.sleep(1)
     print(Fore.GREEN + f'[{node_name}] Leader found — waiting 10s for network to stabilise...')
     time.sleep(10)
-    print(Fore.GREEN + f'[{node_name}] Starting measurement loop...')
     # ───────────────────────────────────────────────────────────────────────
+
+    # ── PHASE 1: closed-loop baseline commit latency ────────────────────────
+    # One commit at a time, blocking until it's actually committed before
+    # sending the next — no overlap, so nothing here can queue/contend.
+    # This is the number that belongs in the paper as "Raft commit latency".
+    print(Fore.GREEN + f'[{node_name}] Starting baseline (closed-loop) measurement...')
+    N_BASELINE_SAMPLES = 250
+
+    def measure_commit_blocking(seq):
+        done = threading.Event()
+        outcome = {}
+
+        def callback(res, err):
+            outcome['t'] = time.perf_counter()
+            outcome['err'] = err
+            done.set()
+
+        start = time.perf_counter()
+        _set_enc_ctx(f"addValue(10) seq={seq} → send")
+        o.addValue(10, seq, callback=callback)
+
+        if not done.wait(timeout=10):
+            print(Fore.RED + f'  seq={seq} timed out — recording as censored sample')
+            label = f'raft_roundtrip_seq{seq}_TIMEOUT' + ('_no_crypto' if NO_CRYPTO else '')
+            latency_monitor._results_list.append({
+                'measurement': len(latency_monitor._results_list) + 1,
+                'label': label,
+                'latency_ms': ''
+            })
+            return
+
+        if outcome['err'] is not None:
+            print(Fore.RED + f'  seq={seq} failed: {outcome["err"]}')
+            return
+
+        latency_ms = (outcome['t'] - start) * 1000
+        label = f'raft_roundtrip_seq{seq}' + ('_no_crypto' if NO_CRYPTO else '')
+        latency_monitor._results_list.append({
+            'measurement': len(latency_monitor._results_list) + 1,
+            'label': label,
+            'latency_ms': round(latency_ms, 6)
+        })
+        print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
+        latency_monitor.append_last('commit_measurements')
+
+    for seq in range(N_BASELINE_SAMPLES):
+        while o._getLeader() is None:
+            time.sleep(0.5)
+        measure_commit_blocking(seq)
+
+    latency_monitor.save_file('commit_measurements')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} '
+          f'baseline measurements to commit_measurements.csv')
+
+    # ── PHASE 2: open-loop latency under concurrent load ────────────────────
+    # Unchanged from before: fires every 0.5s regardless of whether prior
+    # commits have finished, so latency here reflects queueing/contention
+    # under load, not isolated commit latency. Kept as a separate dataset.
+    print(Fore.GREEN + f'[{node_name}] Starting load (open-loop) measurement...')
 
     n = 0
     old_value = -1
@@ -268,5 +336,6 @@ if __name__ == '__main__':
             old_value = current
             print(f"[{node_name}] counter = {Fore.CYAN}{current}{Style.RESET_ALL}")
 
-    latency_monitor.save_file('commit_measurements')
-    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} measurements to commit_measurements.csv')
+    load_monitor.save_file('commit_measurements_load')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(load_monitor._results_list)} '
+          f'load measurements to commit_measurements_load.csv')
