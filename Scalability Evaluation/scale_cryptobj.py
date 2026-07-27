@@ -6,7 +6,7 @@ import threading
 from colorama import Fore, Style
 from functools import partial
 from pysyncobj import SyncObj, replicated, SyncObjConf
-from pysyncobj.syncobj import FAIL_REASON
+from pysyncobj.syncobj import FAIL_REASON, _RAFT_STATE
 import datetime
 from pki_setup import PKI
 import os
@@ -60,6 +60,26 @@ if __name__ == '__main__':
         except Exception:
             pass
 
+    election_monitor = LatencyMonitor()
+    _election_start = [None]
+
+    def onStateChanged(o, n):
+        if n == _RAFT_STATE.CANDIDATE:
+            _election_start[0] = time.perf_counter()
+        elif n == _RAFT_STATE.LEADER and _election_start[0]:
+            latency_ms = (time.perf_counter() - _election_start[0]) * 1000
+            label = f'leader_election_{node_name}' + ('_no_crypto' if NO_CRYPTO else '')
+            election_monitor._results_list.append({
+                'measurement': len(election_monitor._results_list) + 1,
+                'label': label,
+                'latency_ms': round(latency_ms, 6)
+            })
+            print(Fore.CYAN + f"  election [{label}]: {latency_ms:.3f} ms")
+            election_monitor.append_last('election_measurements')
+            _election_start[0] = None
+        elif n == _RAFT_STATE.FOLLOWER:
+            _election_start[0] = None
+
     class Raft(SyncObj):
         def __init__(self, selfNodeAddr, otherNodeAddrs, nodes_data, node_name):
             print("\n" + "="*60)
@@ -70,6 +90,7 @@ if __name__ == '__main__':
             conf.password = None if NO_CRYPTO else "SecureRaft2026"  # <- --no-crypto toggle
             conf.node_name = node_name
             conf.connectionTimeout = 30.0
+            conf.onStateChanged = onStateChanged
             super(Raft, self).__init__(selfNodeAddr, otherNodeAddrs, conf)
             self.__counter = 0
             self.nodes_data = nodes_data
@@ -205,9 +226,6 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
-    # Dedicated monitors: baseline (Phase 1, closed-loop) is kept fully
-    # separate from load (Phase 2, open-loop) so the two measurement
-    # regimes can never end up averaged into one number.
     latency_monitor = LatencyMonitor()   # baseline commit latency (closed-loop)
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
@@ -275,4 +293,7 @@ if __name__ == '__main__':
     latency_monitor.save_file('commit_measurements')
     print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} '
           f'baseline measurements to commit_measurements.csv')
+    election_monitor.save_file('election_measurements')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(election_monitor._results_list)} '
+          f'leader election measurements to election_measurements.csv')
     print(Fore.GREEN + f'[{node_name}] Done.')
