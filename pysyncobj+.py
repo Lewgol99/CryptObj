@@ -163,7 +163,7 @@ if __name__ == '__main__':
         })
         print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
         if len(latency_monitor._results_list) >= latency_monitor.max_measurements:
-            latency_monitor.save_file('latency_measurements')
+            latency_monitor.save_file('commit_measurements')
 
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
@@ -252,10 +252,13 @@ if __name__ == '__main__':
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
-    if o.encryptor is not None:
-        latency_monitor = o.encryptor.latency_monitor
-    else:
-        latency_monitor = LatencyMonitor()
+    # CHANGED: always use a dedicated monitor for commit-latency samples,
+    # instead of reusing o.encryptor.latency_monitor. That monitor also
+    # records every TLS encrypt/decrypt (i.e. every heartbeat/AppendEntries,
+    # not just our 250 commit samples), so it crossed the autosave
+    # threshold almost immediately and the resulting repeated CSV writes
+    # were stalling the commit-timing path itself.
+    latency_monitor = LatencyMonitor()
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
     print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
@@ -279,5 +282,5 @@ if __name__ == '__main__':
             old_value = current
             print(f"[{node_name}] counter = {Fore.CYAN}{current}{Style.RESET_ALL}")
 
-    latency_monitor.save_file('latency_measurements')
-    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} measurements to latency_measurements.csv')
+    latency_monitor.save_file('commit_measurements')
+    print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} measurements to commit_measurements.csv')
