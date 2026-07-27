@@ -130,26 +130,6 @@ if __name__ == '__main__':
                 self._last_leader = leader
             return leader
 
-    # seq -> perf_counter() at send time; keyed because addValue is fire-and-forget
-    # and more than one commit can be in flight when replication is slow.
-    pending_latency = {}
-
-    def onAdd(res, err, cnt):
-        status = Fore.GREEN + "OK" + Style.RESET_ALL if err is None else Fore.RED + str(err) + Style.RESET_ALL
-        print(f"onAdd seq={cnt}  result={res}  {status}")
-
-        start = pending_latency.pop(cnt, None)
-        if start is not None:
-            latency_ms = (time.perf_counter() - start) * 1000
-            label = f'raft_roundtrip_load_seq{cnt}' + ('_no_crypto' if NO_CRYPTO else '')
-            load_monitor._results_list.append({
-                'measurement': len(load_monitor._results_list) + 1,
-                'label': label,
-                'latency_ms': round(latency_ms, 6)
-            })
-            print(f"  roundtrip [{label}]: {latency_ms:.3f} ms")
-            load_monitor.append_last('commit_measurements_load')
-
     if node_name not in nodes:
         print(Fore.RED + f'Error: Node {node_name} not found in nodes.json')
         sys.exit(-1)
@@ -240,8 +220,7 @@ if __name__ == '__main__':
     # Dedicated monitors: baseline (Phase 1, closed-loop) is kept fully
     # separate from load (Phase 2, open-loop) so the two measurement
     # regimes can never end up averaged into one number.
-    latency_monitor = LatencyMonitor()   # Phase 1: baseline commit latency
-    load_monitor = LatencyMonitor()      # Phase 2: latency under concurrent load
+    latency_monitor = LatencyMonitor()   # baseline commit latency (closed-loop)
 
     # ── Wait for Raft to stabilise before sending ──────────────────────────
     print(Fore.YELLOW + f'[{node_name}] Waiting for leader election...')
@@ -303,40 +282,4 @@ if __name__ == '__main__':
     latency_monitor.save_file('commit_measurements')
     print(Fore.GREEN + f'[{node_name}] Saved {len(latency_monitor._results_list)} '
           f'baseline measurements to commit_measurements.csv')
-
-    # ── PHASE 2: open-loop latency under concurrent load ────────────────────
-    # Unchanged from before: fires every 0.5s regardless of whether prior
-    # commits have finished, so latency here reflects queueing/contention
-    # under load, not isolated commit latency. Kept as a separate dataset.
-    print(Fore.GREEN + f'[{node_name}] Starting load (open-loop) measurement...')
-
-    n = 0
-    old_value = -1
-    RUN_DURATION = 600   # run for 10 minutes — adjust as needed
-    start_time = time.time()
-
-    while True:
-        time.sleep(0.5)
-
-        # Stop after RUN_DURATION seconds
-        if time.time() - start_time > RUN_DURATION:
-            print(Fore.CYAN + f'[{node_name}] Run duration reached ({RUN_DURATION}s). Stopping.')
-            break
-
-        leader = o._getLeader()
-
-        if leader is not None:
-            _set_enc_ctx(f"addValue(10) seq={n} → send")
-            print(f"  ->  [{node_name}] addValue(10)  seq={n}")
-            pending_latency[n] = time.perf_counter()
-            o.addValue(10, n, callback=partial(onAdd, cnt=n))
-            n += 1
-
-        current = o.getCounter()
-        if current != old_value:
-            old_value = current
-            print(f"[{node_name}] counter = {Fore.CYAN}{current}{Style.RESET_ALL}")
-
-    load_monitor.save_file('commit_measurements_load')
-    print(Fore.GREEN + f'[{node_name}] Saved {len(load_monitor._results_list)} '
-          f'load measurements to commit_measurements_load.csv')
+    print(Fore.GREEN + f'[{node_name}] Done.')
