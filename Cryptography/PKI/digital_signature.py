@@ -9,12 +9,10 @@ import json
 from asymmetric_keys import Asymmetric_Keys
 from ecc_keys import ECC_Keys
 from ds_latency_monitor import DSLatencyMonitor
-from ds_throughput_monitor import DSThroughputMonitor
 
 class DigitalSignature(Asymmetric_Keys):
     def __init__(self):
         self.latency_monitor = DSLatencyMonitor()
-        self.throughput_monitor = DSThroughputMonitor()
         super().__init__()
 
     def generate_Private_Key(self, key_param):
@@ -94,10 +92,8 @@ class DigitalSignature(Asymmetric_Keys):
         """Sign pre-built bytes exactly as-is. Used for handshake where the
         caller constructs the exact byte sequence the verifier will reconstruct."""
         try:
-            self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             signature = self._do_sign(data)
-            self.throughput_monitor.stop_throughput(len(data), 'sign')
             self.latency_monitor.stop_latency('sign')
             return signature
         except Exception as e:
@@ -107,11 +103,9 @@ class DigitalSignature(Asymmetric_Keys):
     def sign(self, message: bytes, sender_ip: str, recipient_ips: list):
         """Sign a Raft message, prepending sender+recipient IPs for replay protection."""
         try:
-            self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             signed_message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message
             signature = self._do_sign(signed_message)
-            self.throughput_monitor.stop_throughput(len(signed_message), 'sign')
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
             return signature, signed_message
@@ -122,7 +116,6 @@ class DigitalSignature(Asymmetric_Keys):
     def validate(self, public_key, message: bytes, signature: bytes):
         """Verify a signature over exactly the bytes in message."""
         try:
-            self.throughput_monitor.start_throughput()
             self.latency_monitor.start_latency()
             if isinstance(public_key, rsa.RSAPublicKey):
                 public_key.verify(
@@ -132,7 +125,6 @@ class DigitalSignature(Asymmetric_Keys):
                 )
             else:
                 public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
-            self.throughput_monitor.stop_throughput(len(message), 'verify')
             self.latency_monitor.stop_latency('verify')
             print(Fore.GREEN + f'Success: Signature Verified!')
             return True
