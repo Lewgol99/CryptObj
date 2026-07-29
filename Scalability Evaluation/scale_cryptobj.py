@@ -20,6 +20,13 @@ if __name__ == '__main__':
     NO_CRYPTO = '--no-crypto' in sys.argv
     if NO_CRYPTO:
         sys.argv.remove('--no-crypto')
+
+    BOOTSTRAP_ITERATIONS = None
+    if '--bootstrap' in sys.argv:
+        bootstrap_index = sys.argv.index('--bootstrap')
+        BOOTSTRAP_ITERATIONS = int(sys.argv[bootstrap_index + 1])
+        del sys.argv[bootstrap_index:bootstrap_index + 2]
+    BOOTSTRAP_COOLDOWN = 5.0  # seconds all nodes wait between rounds
     # ─────────────────────────────────────────────────────────────────────
 
     with open('scale_nodes.json', 'r') as file:
@@ -223,6 +230,47 @@ if __name__ == '__main__':
     if not os.path.exists(f'{node_name}_certificate.pem'):
         print(Fore.RED + f'Error: No Certificate Found for {node_name}! Cannot Start PySyncObj!!')
         exit(0)
+
+    if BOOTSTRAP_ITERATIONS is not None:
+        print(Fore.YELLOW + f'[{node_name}] Bootstrap-election mode: '
+              f'{BOOTSTRAP_ITERATIONS} rounds requested.')
+
+        def _handle_sigterm_bootstrap(signum, frame):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGTERM, _handle_sigterm_bootstrap)
+
+        completed = 0
+        try:
+            for round_num in range(1, BOOTSTRAP_ITERATIONS + 1):
+                _election_start[0] = None
+                print(Fore.CYAN + f'[{node_name}] Round {round_num}/'
+                      f'{BOOTSTRAP_ITERATIONS}: starting fresh cluster instance...')
+                o = Raft(self_addr, partner_addrs, nodes, node_name)
+
+                round_start = time.perf_counter()
+                LEADER_WAIT_TIMEOUT = 30.0
+                while o._getLeader() is None:
+                    if time.perf_counter() - round_start > LEADER_WAIT_TIMEOUT:
+                        print(Fore.RED + f'[{node_name}] Round {round_num}: '
+                              f'no leader formed within {LEADER_WAIT_TIMEOUT:.0f}s — skipping round.')
+                        break
+                    time.sleep(0.1)
+                else:
+                    completed += 1
+
+                o.destroy_synchronous()
+
+                time.sleep(BOOTSTRAP_COOLDOWN)
+        except KeyboardInterrupt:
+            print(Fore.YELLOW + f'\n[{node_name}] Bootstrap sampling stopped early '
+                  f'after {completed} completed rounds.')
+
+        election_monitor.save_file('election_measurements')
+        print(Fore.GREEN + f'[{node_name}] Saved {len(election_monitor._results_list)} '
+              f'leader election measurements to election_measurements.csv')
+        print(Fore.GREEN + f'[{node_name}] Bootstrap sampling done '
+              f'({completed}/{BOOTSTRAP_ITERATIONS} rounds formed a leader).')
+        sys.exit(0)
 
     o = Raft(self_addr, partner_addrs, nodes, node_name)
 
