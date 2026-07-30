@@ -34,6 +34,11 @@ class TLS_Manager:
         return self.self_address > self.peer_addresses[peer_node_name]
  
     def session_for(self, peer_node_name):
+        import time
+        replacing = peer_node_name in self._sessions
+        prior_complete = self._sessions[peer_node_name].handshake_complete if replacing else None
+        print(f"[session_for] t={time.perf_counter():.3f} peer={peer_node_name} "
+              f"replacing_existing={replacing} prior_handshake_complete={prior_complete}")
         self._sessions[peer_node_name] = TLS_Session(
             self_node_name=self.self_node_name,
             peer_node_name=peer_node_name,
