@@ -56,6 +56,7 @@ class TLS_Session:
         self.latency_monitor = latency_monitor
         self.curve_name = curve_name
         self._requested_cipher_suite = cipher_suite
+        self._flush_cb = None
 
         self.in_bio = ssl.MemoryBIO()
         self.out_bio = ssl.MemoryBIO()
@@ -77,6 +78,20 @@ class TLS_Session:
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio, server_side=True)
 
         self._try_complete_handshake()
+
+    def set_flush_callback(self, cb):
+        """Register a zero-arg callable that sends a trivial message on the
+        underlying connection. Used to push handshake flights out immediately
+        instead of waiting for the next real Raft message."""
+        self._flush_cb = cb
+
+    def _flush_if_pending(self):
+        if self._flush_cb and self.out_bio.pending:
+            try:
+                self._flush_cb()
+            except Exception as e:
+                print(f"{Fore.RED}[TLS_Session] flush callback failed for peer "
+                      f"{self.peer_node_name}: {e}{Style.RESET_ALL}")
 
     def _tls_info(self):
         if not self.handshake_complete:
@@ -173,6 +188,8 @@ class TLS_Session:
 
             if not self.handshake_complete:
                 self._try_complete_handshake()
+
+            self._flush_if_pending()
 
             plaintext = bytearray()
             if self.handshake_complete:
