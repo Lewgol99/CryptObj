@@ -75,10 +75,6 @@ if __name__ == '__main__':
 
     election_monitor = LatencyMonitor()
     _election_start = [None]
-    _first_election_seen = [False]  # first candidate→leader transition pays cold-start
-                                     # connection/handshake cost (esp. under TLS) and is
-                                     # discarded so recorded elections reflect steady-state
-                                     # re-election latency, not cluster bootstrap.
 
     def onStateChanged(o, n):
         if n == _RAFT_STATE.CANDIDATE:
@@ -86,19 +82,13 @@ if __name__ == '__main__':
         elif n == _RAFT_STATE.LEADER and _election_start[0]:
             latency_ms = (time.perf_counter() - _election_start[0]) * 1000
             label = f'leader_election_{node_name}' + ('_no_crypto' if NO_CRYPTO else '')
-
-            if not _first_election_seen[0]:
-                _first_election_seen[0] = True
-                print(Fore.YELLOW + f"  [cold-start election discarded]: {latency_ms:.3f} ms")
-            else:
-                election_monitor._results_list.append({
-                    'measurement': len(election_monitor._results_list) + 1,
-                    'label': label,
-                    'latency_ms': round(latency_ms, 6)
-                })
-                print(Fore.CYAN + f"  election [{label}]: {latency_ms:.3f} ms")
-                election_monitor.append_last('election_measurements')
-
+            election_monitor._results_list.append({
+                'measurement': len(election_monitor._results_list) + 1,
+                'label': label,
+                'latency_ms': round(latency_ms, 6)
+            })
+            print(Fore.CYAN + f"  election [{label}]: {latency_ms:.3f} ms")
+            election_monitor.append_last('election_measurements')
             _election_start[0] = None
         elif n == _RAFT_STATE.FOLLOWER:
             _election_start[0] = None
