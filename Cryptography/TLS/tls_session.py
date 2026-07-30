@@ -7,6 +7,13 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 
 _warned_no_set_ciphersuites = False
+_warned_no_set_ecdh_curve = False
+
+_OPENSSL_CURVE_NAMES = {
+    'SECP256R1': 'prime256v1',
+    'SECP384R1': 'secp384r1',
+    'SECP521R1': 'secp521r1',
+}
 
 def _apply_cipher_suite(ctx, cipher_suite, peer_node_name):
     global _warned_no_set_ciphersuites
@@ -19,6 +26,25 @@ def _apply_cipher_suite(ctx, cipher_suite, peer_node_name):
         print(f"{Fore.YELLOW}[TLS_Session] This Python build's ssl module has no "
               f"set_ciphersuites() — cannot enforce a specific TLS 1.3 cipher "
               f"suite. Falling back to default negotiation.{Style.RESET_ALL}")
+
+def _apply_curve(ctx, curve_name, peer_node_name):
+    global _warned_no_set_ecdh_curve
+    if not curve_name:
+        return
+    openssl_name = _OPENSSL_CURVE_NAMES.get(curve_name, curve_name)
+    if hasattr(ctx, 'set_ecdh_curve'):
+        try:
+            ctx.set_ecdh_curve(openssl_name)
+        except Exception as e:
+            print(f"{Fore.RED}[TLS_Session] Failed to set ECDH curve "
+                  f"'{openssl_name}' (requested '{curve_name}') for peer "
+                  f"{peer_node_name}: {e}{Style.RESET_ALL}")
+            raise
+    elif not _warned_no_set_ecdh_curve:
+        _warned_no_set_ecdh_curve = True
+        print(f"{Fore.YELLOW}[TLS_Session] This Python build's ssl module has no "
+              f"set_ecdh_curve() — cannot enforce a specific curve/group. "
+              f"Falling back to default negotiation.{Style.RESET_ALL}")
 
 class TLS_Session:
     def __init__(self, self_node_name, peer_node_name, is_client,
@@ -38,6 +64,7 @@ class TLS_Session:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
             _apply_cipher_suite(ctx, cipher_suite, peer_node_name)
+            _apply_curve(ctx, curve_name, peer_node_name)
             ctx.load_verify_locations(cafile=ca_cert_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio,
                                         server_hostname=peer_node_name)
@@ -45,6 +72,7 @@ class TLS_Session:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
             _apply_cipher_suite(ctx, cipher_suite, peer_node_name)
+            _apply_curve(ctx, curve_name, peer_node_name)
             ctx.load_cert_chain(certfile=self_cert_file, keyfile=self_key_file)
             self.sslobj = ctx.wrap_bio(self.in_bio, self.out_bio, server_side=True)
 
@@ -70,9 +98,16 @@ class TLS_Session:
     def _try_complete_handshake(self):
         if self.handshake_complete:
             return
+        import time
+        if not hasattr(self, '_handshake_first_attempt_at'):
+            self._handshake_first_attempt_at = time.perf_counter()
         try:
             self.sslobj.do_handshake()
             self.handshake_complete = True
+            elapsed_ms = (time.perf_counter() - self._handshake_first_attempt_at) * 1000
+            print(f"{Fore.GREEN}[TLS handshake] peer={self.peer_node_name} "
+                  f"curve(configured)={self.curve_name} "
+                  f"wall_clock_since_first_attempt={elapsed_ms:.1f}ms{Style.RESET_ALL}")
         except ssl.SSLWantReadError:
             pass
         except Exception:
