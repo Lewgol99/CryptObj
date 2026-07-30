@@ -514,6 +514,9 @@ class TCPTransport(Transport):
         self._onMessageReceived(node, result)
 
     def _onDisconnected(self, conn):
+        import time as _time
+        print(Fore.MAGENTA + f"[DISCONNECT] t={_time.perf_counter():.3f} conn={id(conn)} "
+              f"node={self._connToNode(conn)}")
         self._unknownConnections.discard(conn)
         conn.encryptor = None
         node = self._connToNode(conn)
