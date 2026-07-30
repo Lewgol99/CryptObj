@@ -358,6 +358,8 @@ class TCPTransport(Transport):
             if hasattr(self._syncObj.encryptor, 'session_for'):
                 if peer_node_name:
                     conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+                    if hasattr(conn.encryptor, 'set_flush_callback'):
+                        conn.encryptor.set_flush_callback(functools.partial(conn.send, b''))
                 else:
                     print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
             else:
@@ -477,6 +479,8 @@ class TCPTransport(Transport):
             if hasattr(self._syncObj.encryptor, 'session_for'):
                 if peer_node_name:
                     conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+                    if hasattr(conn.encryptor, 'set_flush_callback'):
+                        conn.encryptor.set_flush_callback(functools.partial(conn.send, b''))
                 else:
                     print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
             else:
