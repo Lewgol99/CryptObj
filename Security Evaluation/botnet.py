@@ -8,7 +8,7 @@ from seedemu.layers.Ebgp import PeerRelationship
 from seedemu.utilities import Makers
 
 NUM_NODES = 3
-NUM_BOTS  = 4
+NUM_BOTS  = 3
 #GIT_USERNAME = 'Lewgol99'
 #GIT_TOKEN    = ''
 #GIT_REPO     = 'https://github.com/Lewgol99/CryptObj.git'
@@ -49,6 +49,10 @@ nodes_b64  = base64.b64encode(nodes_json.encode()).decode()
 with open('scale_nodes.json', 'w') as f:
     json.dump(nodes, f, indent=4)
 build_cmd = f"python3 -c \"import json,base64; data=json.loads(base64.b64decode('{nodes_b64}').decode()); [open('/CryptObj/'+n,'w').write(json.dumps(data,indent=4)) for n in ['scale_nodes.json','nodes.json']]\""
+
+# Dynamic pysyncobj path lookup — works regardless of the base image's Python version,
+# instead of hardcoding a path like /usr/local/lib/python3.8/dist-packages/pysyncobj/
+PYSYNCOBJ_DIR = "$(python3 -c 'import pysyncobj, os; print(os.path.dirname(pysyncobj.__file__))')"
 ###############################################################################
 # CA node — static IP on net0
 ca_host = (as166
@@ -62,8 +66,8 @@ ca_host.addBuildCommand('chmod -R 777 CryptObj')
 ca_host.addBuildCommand(build_cmd)
 ca_host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
 ca_host.addBuildCommand('pip3 install --no-cache-dir --break-system-packages -r CryptObj/requirements.txt')
-ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
-ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
+ca_host.addBuildCommand(f'cp CryptObj/transport.py "{PYSYNCOBJ_DIR}/transport.py"')
+ca_host.addBuildCommand(f'cp CryptObj/encryptor.py "{PYSYNCOBJ_DIR}/encryptor.py"')
 ca_host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
 ca_host.appendStartCommand('cd /CryptObj && gunicorn --workers 32 --timeout 120 --bind 0.0.0.0:5000 ca_server:app')
 ###############################################################################
@@ -79,8 +83,8 @@ for i in range(1, NUM_NODES + 1):
     host.addBuildCommand(build_cmd)
     host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
     host.addBuildCommand('pip3 install --no-cache-dir --break-system-packages -r CryptObj/requirements.txt')
-    host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
-    host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
+    host.addBuildCommand(f'cp CryptObj/transport.py "{PYSYNCOBJ_DIR}/transport.py"')
+    host.addBuildCommand(f'cp CryptObj/encryptor.py "{PYSYNCOBJ_DIR}/encryptor.py"')
     host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
     host.appendStartCommand(f'cd /CryptObj && python3 /CryptObj/scale_cryptobj.py node{i} RSA 2048 AES')
 ###############################################################################
