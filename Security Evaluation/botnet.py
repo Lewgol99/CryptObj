@@ -61,7 +61,7 @@ ca_host.addBuildCommand('find CryptObj -mindepth 2 -type f -exec mv -n {} CryptO
 ca_host.addBuildCommand('chmod -R 777 CryptObj')
 ca_host.addBuildCommand(build_cmd)
 ca_host.addBuildCommand('apt-get install -y --no-install-recommends lftp python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*')
-ca_host.addBuildCommand('pip3 install --no-cache-dir -r CryptObj/requirements.txt')
+ca_host.addBuildCommand('pip3 install --no-cache-dir --break-system-packages -r CryptObj/requirements.txt')
 ca_host.addBuildCommand('cp CryptObj/transport.py /usr/local/lib/python3.8/dist-packages/pysyncobj/transport.py')
 ca_host.addBuildCommand('cp CryptObj/encryptor.py /usr/local/lib/python3.8/dist-packages/pysyncobj/encryptor.py')
 ca_host.appendStartCommand('until ip route | grep -q "10.166.0.0"; do sleep 1; done')
