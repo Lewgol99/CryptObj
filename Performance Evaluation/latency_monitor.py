@@ -4,7 +4,7 @@ import os
 import pandas
 
 class LatencyMonitor:
-    def __init__(self, max_measurements=1000):  
+    def __init__(self, max_measurements=2000):  
         self._results_list = []  
         self.start = None
         self.stop = None
