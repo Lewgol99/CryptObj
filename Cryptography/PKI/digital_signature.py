@@ -100,10 +100,11 @@ class DigitalSignature(Asymmetric_Keys):
             print(Fore.RED + f'Error: Failed Signing Message! {e}')
             return None
 
-    def sign(self, message: bytes, sender_ip: str, recipient_ips: list):
+    def sign(self, message: bytes, sender_ip: str, recipient_ip: str, other_ips: list):
         """Sign a Raft message, prepending sender+recipient IPs for replay protection."""
         try:
             self.latency_monitor.start_latency()
+            identity_prefix = '.'.join([sender_ip, recipiant_ip] + other_ips) # For AnBx sign the raft message using S, R, O as seperate parameters.
             signed_message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message
             signature = self._do_sign(signed_message)
             self.latency_monitor.stop_latency('sign')
