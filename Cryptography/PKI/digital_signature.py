@@ -104,8 +104,8 @@ class DigitalSignature(Asymmetric_Keys):
         """Sign a Raft message, prepending sender+recipient IPs for replay protection."""
         try:
             self.latency_monitor.start_latency()
-            identity_prefix = '.'.join([sender_ip, recipiant_ip] + other_ips) # For AnBx sign the raft message using S, R, O as seperate parameters.
-            signed_message = (','.join([sender_ip] + recipient_ips) + '||').encode() + message
+            identity_prefix = '.'.join([sender_ip, recipient_ip] + other_ips) # For AnBx sign the raft message using S, R, O as seperate parameters.
+            signed_message = (identity_prefix + '||').encode() + message
             signature = self._do_sign(signed_message)
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
