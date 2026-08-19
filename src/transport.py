@@ -95,7 +95,7 @@ class Transport(object):
 _FLAG_WAS_DICT = 0x01
 
 
-def _wrap_and_sign(signer, message, sender_ip, recipient_ips, sign_enabled=True):
+def _wrap_and_sign(signer, message, sender_ip, recipient_ips, other_ips, sign_enabled=True):
     if isinstance(message, bytes):
         flags   = 0x00
         payload = message
@@ -109,7 +109,7 @@ def _wrap_and_sign(signer, message, sender_ip, recipient_ips, sign_enabled=True)
         header = struct.pack('!BH', flags, 0)
         return header + payload
 
-    result = signer.sign(payload, sender_ip, recipient_ips)
+    result = signer.sign(payload, sender_ip, recipient_ips, other_ips)
     if result is None:
         print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
         signature      = b''
@@ -581,13 +581,15 @@ class TCPTransport(Transport):
 
         self._dbg_send_total += 1
         try:
-            recipient_ips  = [n.address for n in self._nodes]
+            recipient_ips  = node.address 
+            other_ips = sorted(n.address for n in self._nodes if n != node) # add other_ips to compute recipiant and other seperately 
             _send_start = time.perf_counter()
             signed_message = _wrap_and_sign(
                 self.signer,
                 message,
                 self._selfNode.address,
                 recipient_ips,
+                other_ips,
                 sign_enabled=self._crypto_enabled,
             )
             _send_elapsed_ms = (time.perf_counter() - _send_start) * 1000
