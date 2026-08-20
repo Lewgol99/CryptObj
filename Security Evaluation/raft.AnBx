@@ -1,21 +1,21 @@
 Protocol: CryptObj AnB
 Types:
-  Agent C1,C2,C3;
-  Number Term, LastLogIdx, LastLogTerm, empty, requestvoterequest;
+  Agent C1,C2,C3;   # candidates
+  Number Term, LastLogIdx, LastLogTerm, empty;
   Function [Agent -> PublicKey] pk;
   Function [Agent -> PublicKey] sk;
 
 Knowledge:
-    C1: C1, C2, C3, pk, sk, inv(sk(C1)), inv(pk(C1)), empty, requestvoterequest;
-    C2: C1, C2, C3, pk, sk, inv(sk(C2)), inv(pk(C2)), empty, requestvoterequest;
+    C1: C1, C2, C3, pk, sk, inv(sk(C1)), inv(pk(C1)), empty;
+    C2: C1, C2, C3, pk, sk, inv(sk(C2)), inv(pk(C2)), empty;
     C3: C1, C2, C3, pk, sk, inv(sk(C3)), inv(pk(C3)), empty;
 
 Actions:
-C1 -> C2: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C1))}pk(C2)
+C1 -> C2: {{C1, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C2)
 C2 -> C1: empty
-C1 -> C3: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C1))}pk(C3)
+C1 -> C3: {{C1, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C3)
 C3 -> C2: empty
-C2 -> C3: {{requestvoterequest,Term, LastLogIdx, LastLogTerm, C1, C2, C3}inv(sk(C2))}pk(C3)
+C2 -> C3: {{C2, Term, LastLogIdx, LastLogTerm, C1, C3}inv(sk(C2))}pk(C3)
    
 Goals:
    C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
