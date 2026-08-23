@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend     
 import json
+import pickle
 from asymmetric_keys import Asymmetric_Keys
 from ecc_keys import ECC_Keys
 from ds_latency_monitor import DSLatencyMonitor
@@ -106,6 +107,20 @@ class DigitalSignature(Asymmetric_Keys):
             self.latency_monitor.start_latency()
             identity_prefix = ','.join([sender_ip, recipient_ip] + other_ips)
             print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips}')
+
+            # [PAYLOAD] — logs the exact structure being signed, split at the
+            # identity/data boundary, so the model can mirror the true byte
+            # layout: identity block (S,R,O) FIRST, then '||' separator, then
+            # the pickled Raft RPC payload (type, term, last_log_index, ...)
+            # SECOND. This is not interleaved — identities are never mixed
+            # in among the data fields the way earlier model drafts assumed.
+            try:
+                decoded_payload = pickle.loads(message)
+            except Exception:
+                decoded_payload = message  # not a pickled dict (e.g. already bytes)
+            print(Fore.MAGENTA + f'[PAYLOAD] pre-sign structure: '
+                  f'identity=({identity_prefix}) || data={decoded_payload}')
+
             signed_message = (identity_prefix + '||').encode() + message
             signature = self._do_sign(signed_message)
             self.latency_monitor.stop_latency('sign')
