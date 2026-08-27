@@ -1,1 +1,36 @@
-
+Protocol: CryptObj AnB
+ 
+Types:
+  Agent C1,C2,C3;                                     # candidates
+  Number Term, LastLogIdx, LastLogTerm, PrevLogTerm, PrevLogIdx;
+  Number requestvote, responsevote, appendentries, nextnodeidx;
+  Number Nonce,X;
+  Function [Agent -> PublicKey] pk;
+  Function [Agent -> PublicKey] sk;
+  Function [Number -> Number] pre,succ;
+  
+Equations:
+ succ(pre(X)) = X;
+ pre(succ(X)) = X;
+	
+Knowledge:
+  C1: C1, C2, C3, pk, sk, inv(sk(C1)), inv(pk(C1)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
+  C2: C1, C2, C3, pk, sk, inv(sk(C2)), inv(pk(C2)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
+  C3: C1, C2, C3, pk, sk, inv(sk(C3)), inv(pk(C3)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
+ 
+Actions:
+  C1 -> C2: {{C1,requestvote,Term,LastLogIdx,LastLogTerm,appendentries,PrevLogTerm,PrevLogIdx,C2,C3}inv(sk(C1))}pk(C2)
+  C2 -> C1: {{C2,responsevote,Term,succ(LastLogIdx),C1,C3}inv(sk(C2))}pk(C1)
+  C1 -> C3: {{C1,requestvote,Term,LastLogIdx,LastLogTerm,appendentries,PrevLogTerm,PrevLogIdx,C2,C3}inv(sk(C1))}pk(C3)
+  C3 -> C1: {{C3,responsevote,Term,succ(LastLogIdx),C1,C2}inv(sk(C3))}pk(C1)
+ 
+Goals:
+  C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
+  C2 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
+  Term secret between C1, C2, C3
+  LastLogIdx secret between C1, C2, C3
+  LastLogTerm secret between C1, C2, C3
+  PrevLogIdx secret between C1, C2, C3
+  PrevLogTerm secret between C1, C2, C3
+  
+  
