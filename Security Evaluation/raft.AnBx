@@ -1,36 +1,48 @@
 Protocol: CryptObj AnB
- 
+
 Types:
-  Agent C1,C2,C3;                                     # candidates
-  Number Term, LastLogIdx, LastLogTerm, PrevLogTerm, PrevLogIdx;
-  Number requestvote, responsevote, appendentries, nextnodeidx;
-  Number Nonce,X;
-  Function [Agent -> PublicKey] pk;
-  Function [Agent -> PublicKey] sk;
-  Function [Number -> Number] pre,succ;
-  
-Equations:
- succ(pre(X)) = X;
- pre(succ(X)) = X;
-	
+  Agent C1,C2,C3;   # candidates
+  Number Term, LastLogIdx, LastLogTerm, PrevLogIdx, PrevLogTerm, CommitIdx;   # variables - values change every round/entry, matches paper/repo convention
+  Number success, reset;   # constants - fixed enumerated flag values, not session-varying
+  Number RequestId, LogIdx;
+  Number Nonce,X;   # fresh and random value generated
+  Number requestvote, responsevote, appendentries, nextnodeidx;   # message-type tags, part of signed payload (matches repo's raft.AnBx convention)
+  Function [Agent -> PublicKey] pk; # maps each Agent to the Public Key (Public Key used to encrypt messages)
+  Function [Agent -> PublicKey] sk; # used by others verification of the Public Key used by Agent for Authentication
+  Function [Number -> Number] pre,succ; # pre = number before 'n' and succ = number after 'n'
+
+Equations: # algebraic relationship - applying succ and pre gets back where you started
+succ(pre(X)) = X;
+pre(succ(X)) = X;
+
 Knowledge:
-  C1: C1, C2, C3, pk, sk, inv(sk(C1)), inv(pk(C1)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
-  C2: C1, C2, C3, pk, sk, inv(sk(C2)), inv(pk(C2)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
-  C3: C1, C2, C3, pk, sk, inv(sk(C3)), inv(pk(C3)), requestvote, responsevote, appendentries, nextnodeidx, pre,succ;
- 
+  C1: C1, C2, C3, pk, sk, pre, succ, inv(sk(C1)), inv(pk(C1)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
+  C2: C1, C2, C3, pk, sk, pre, succ, inv(sk(C2)), inv(pk(C2)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
+  C3: C1, C2, C3, pk, sk, pre, succ, inv(sk(C3)), inv(pk(C3)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
+
 Actions:
-  C1 -> C2: {{C1,requestvote,Term,LastLogIdx,LastLogTerm,appendentries,PrevLogTerm,PrevLogIdx,C2,C3}inv(sk(C1))}pk(C2)
-  C2 -> C1: {{C2,responsevote,Term,succ(LastLogIdx),C1,C3}inv(sk(C2))}pk(C1)
-  C1 -> C3: {{C1,requestvote,Term,LastLogIdx,LastLogTerm,appendentries,PrevLogTerm,PrevLogIdx,C2,C3}inv(sk(C1))}pk(C3)
-  C3 -> C1: {{C3,responsevote,Term,succ(LastLogIdx),C1,C2}inv(sk(C3))}pk(C1)
- 
+  C1 -> C2: {{C1, requestvote, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C2)   # request_vote
+  C2 -> C1: {{C2, responsevote, Term}inv(sk(C2))}pk(C1)                                    # response_vote
+  C1 -> C3: {{C1, requestvote, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C3)   # request_vote
+  C3 -> C2: {{C3, responsevote, Term}inv(sk(C3))}pk(C2)                                    # response_vote (routed via C2, matches paper's chain: C3->C2 not C3->C1)
+  C2 -> C3: {{C2, requestvote, Term, LastLogIdx, LastLogTerm, C1, C3}inv(sk(C2))}pk(C3)   # request_vote relay (matches paper's C2->C3 action)
+  C3 -> C1: {{C3, responsevote, Term}inv(sk(C3))}pk(C1)                                    # bridge ack [not in paper - restores narration chain to C1 before AppendEntries block, required by OFMC's linear-chain translator]
+  C1 -> C2: {{C1, appendentries, Term, PrevLogIdx, PrevLogTerm, CommitIdx}inv(sk(C1))}pk(C2)  # append_entries [beyond paper scope]
+  C2 -> C1: {{C2, nextnodeidx, succ(PrevLogIdx), success, reset}inv(sk(C2))}pk(C1)             # next_node_idx  [beyond paper scope]
+  C1 -> C3: {{C1, appendentries, Term, PrevLogIdx, PrevLogTerm, CommitIdx}inv(sk(C1))}pk(C3)  # append_entries [beyond paper scope]
+  C3 -> C1: {{C3, nextnodeidx, succ(PrevLogIdx), success, reset}inv(sk(C3))}pk(C1)             # next_node_idx  [beyond paper scope]
+
 Goals:
-  C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
-  C2 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm
+  C2 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm # request_vote  (matches paper)
+  C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm # request_vote  (matches paper)
+
+  C2 authenticates C1 on PrevLogIdx, PrevLogTerm, CommitIdx  # append_entries [beyond paper scope]
+  C3 authenticates C1 on PrevLogIdx, PrevLogTerm, CommitIdx  # append_entries [beyond paper scope]
+  C1 authenticates C2 on PrevLogIdx, success, reset  # next_node_idx [beyond paper scope]
+  C1 authenticates C3 on PrevLogIdx, success, reset  # next_node_idx [beyond paper scope]
+
   Term secret between C1, C2, C3
   LastLogIdx secret between C1, C2, C3
   LastLogTerm secret between C1, C2, C3
   PrevLogIdx secret between C1, C2, C3
   PrevLogTerm secret between C1, C2, C3
-  
-  
