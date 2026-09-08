@@ -1,48 +1,78 @@
 Protocol: CryptObj AnB
-
+ 
 Types:
   Agent C1,C2,C3;   # candidates
-  Number Term, LastLogIdx, LastLogTerm, PrevLogIdx, PrevLogTerm, CommitIdx;   # variables - values change every round/entry, matches paper/repo convention
-  Number success, reset;   # constants - fixed enumerated flag values, not session-varying
-  Number RequestId, LogIdx;
+  Number Term, Last_log_index, Last_log_term, PrevLogIdx, PrevLogTerm, Commit_index;   # variables - values change every round/entry, matches paper/repo convention
+  Number trueV, falseV;    # boolean-like flag constants (renamed from true/false - those are reserved keywords in ProVerif and block verification)
+  Number RequestId, Log_idx, Log_term;   # apply_command_response fields - opaque correlation id + commit position, no succ/pre relationship
   Number Nonce,X;   # fresh and random value generated
-  Number requestvote, responsevote, appendentries, nextnodeidx;   # message-type tags, part of signed payload (matches repo's raft.AnBx convention)
+  Number request_vote, response_vote, append_entries, next_node_idx, apply_command_response;   # message-type tags, part of signed payload
   Function [Agent -> PublicKey] pk; # maps each Agent to the Public Key (Public Key used to encrypt messages)
   Function [Agent -> PublicKey] sk; # used by others verification of the Public Key used by Agent for Authentication
   Function [Number -> Number] pre,succ; # pre = number before 'n' and succ = number after 'n'
-
+ 
 Equations: # algebraic relationship - applying succ and pre gets back where you started
 succ(pre(X)) = X;
 pre(succ(X)) = X;
-
+ 
 Knowledge:
-  C1: C1, C2, C3, pk, sk, pre, succ, inv(sk(C1)), inv(pk(C1)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
-  C2: C1, C2, C3, pk, sk, pre, succ, inv(sk(C2)), inv(pk(C2)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
-  C3: C1, C2, C3, pk, sk, pre, succ, inv(sk(C3)), inv(pk(C3)), success, reset, requestvote, responsevote, appendentries, nextnodeidx;
-
+  C1: C1, C2, C3, pk, sk, pre, succ, inv(sk(C1)), inv(pk(C1)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command_response;
+  C2: C1, C2, C3, pk, sk, pre, succ, inv(sk(C2)), inv(pk(C2)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command_response;
+  C3: C1, C2, C3, pk, sk, pre, succ, inv(sk(C3)), inv(pk(C3)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command_response;
+ 
 Actions:
-  C1 -> C2: {{C1, requestvote, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C2)   # request_vote
-  C2 -> C1: {{C2, responsevote, Term}inv(sk(C2))}pk(C1)                                    # response_vote
-  C1 -> C3: {{C1, requestvote, Term, LastLogIdx, LastLogTerm, C2, C3}inv(sk(C1))}pk(C3)   # request_vote
-  C3 -> C2: {{C3, responsevote, Term}inv(sk(C3))}pk(C2)                                    # response_vote (routed via C2, matches paper's chain: C3->C2 not C3->C1)
-  C2 -> C3: {{C2, requestvote, Term, LastLogIdx, LastLogTerm, C1, C3}inv(sk(C2))}pk(C3)   # request_vote relay (matches paper's C2->C3 action)
-  C3 -> C1: {{C3, responsevote, Term}inv(sk(C3))}pk(C1)                                    # bridge ack [not in paper - restores narration chain to C1 before AppendEntries block, required by OFMC's linear-chain translator]
-  C1 -> C2: {{C1, appendentries, Term, PrevLogIdx, PrevLogTerm, CommitIdx}inv(sk(C1))}pk(C2)  # append_entries [beyond paper scope]
-  C2 -> C1: {{C2, nextnodeidx, succ(PrevLogIdx), success, reset}inv(sk(C2))}pk(C1)             # next_node_idx  [beyond paper scope]
-  C1 -> C3: {{C1, appendentries, Term, PrevLogIdx, PrevLogTerm, CommitIdx}inv(sk(C1))}pk(C3)  # append_entries [beyond paper scope]
-  C3 -> C1: {{C3, nextnodeidx, succ(PrevLogIdx), success, reset}inv(sk(C3))}pk(C1)             # next_node_idx  [beyond paper scope]
-
+  # NOTE ON ORDER: OFMC/AnBx requires the action sequence to form one connected chain
+  # (each message's sender = previous message's receiver). The log itself has no single
+  # canonical order - each message type below recurs thousands of times, interleaved.
+  # This ordering is chosen only to satisfy that tool requirement; it reuses the same
+  # 9 message types/content as evidenced in the log, with none added or removed.
+ 
+  # C1<->C2 is the only vote exchange in the log; C3 does not appear (still fetching node001's cert at this point)
+  # request_vote - log line 155: node001 | data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
+  C1 -> C2: {{C1, request_vote, Term, Last_log_index, Last_log_term, C2, C3}inv(sk(C1))}pk(C2)   # request_vote
+  # response_vote - log line 102: node002 | data={'type': 'response_vote', 'term': 1}
+  C2 -> C1: {{C2, response_vote, Term}inv(sk(C2))}pk(C1)                                    # response_vote
+ 
+  # append_entries - log line 182: node001 | data={'type': 'append_entries', 'term': 1, 'commit_index': 1, 'entries': [(b'\x01', 2, 1)], 'prevLogIdx': 1, 'prevLogTerm': 0}
+  # all 13,751 instances sent by C1 alone (sole leader)
+  C1 -> C3: {{C1, append_entries, Term,  Commit_index, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C3)  # append_entries
+ 
+  # next_node_idx SUCCESS - log line 170: node002 | data={'type': 'next_node_idx', 'next_node_idx': 3, 'reset': False, 'success': True}
+  # 6,876 from C2, 6,875 from C3, all success=True/reset=False
+  C3 -> C1: {{C3, next_node_idx, succ(PrevLogIdx), trueV, falseV}inv(sk(C3))}pk(C1)             # next_node_idx: SUCCESS
+ 
+  # apply_command_response - log line 5120: node001 | to C3, data={'type': 'apply_command_response', 'request_id': 1, 'Log_idx': 8, 'log_term': 1}
+  # sent to both followers - 2,394 to C2, 2,331 to C3
+  # request (line 2804: node003 | data={'type': 'apply_command', ...}) is client-originated, not modelled
+  C1 -> C3: {{C1, apply_command_response, RequestId, Log_idx, Log_term}inv(sk(C1))}pk(C3)          # apply_command_response
+ 
+  # next_node_idx RESET - not seen in log (0 of 13,751); confirmed only via source line 923
+  C3 -> C1: {{C3, next_node_idx, PrevLogIdx, falseV, trueV}inv(sk(C3))}pk(C1)                    # next_node_idx: RESET, unconfirmed against logs
+ 
+  C1 -> C2: {{C1, append_entries, Term, PrevLogIdx, PrevLogTerm, Commit_index}inv(sk(C1))}pk(C2)  # append_entries
+ 
+  C2 -> C1: {{C2, next_node_idx, succ(PrevLogIdx), trueV, falseV}inv(sk(C2))}pk(C1)             # next_node_idx: SUCCESS
+ 
+  # log line 5078: node001 | to C2, data={'type': 'apply_command_response', 'request_id': 1, 'Log_idx': 6, 'log_term': 1}
+  C1 -> C2: {{C1, apply_command_response, RequestId, Log_idx, Log_term}inv(sk(C1))}pk(C2)          # apply_command_response
+ 
 Goals:
-  C2 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm # request_vote  (matches paper)
-  C3 weakly authenticates C1 on Term, LastLogIdx, LastLogTerm # request_vote  (matches paper)
-
-  C2 authenticates C1 on PrevLogIdx, PrevLogTerm, CommitIdx  # append_entries [beyond paper scope]
-  C3 authenticates C1 on PrevLogIdx, PrevLogTerm, CommitIdx  # append_entries [beyond paper scope]
-  C1 authenticates C2 on PrevLogIdx, success, reset  # next_node_idx [beyond paper scope]
-  C1 authenticates C3 on PrevLogIdx, success, reset  # next_node_idx [beyond paper scope]
-
-  Term secret between C1, C2, C3
-  LastLogIdx secret between C1, C2, C3
-  LastLogTerm secret between C1, C2, C3
+  C2 weakly authenticates C1 on Term, Last_log_index, Last_log_term # request_vote
+  C2 weakly authenticates C1 on PrevLogIdx, PrevLogTerm, Commit_index  # append_entries
+  C3 weakly authenticates C1 on PrevLogIdx, PrevLogTerm, Commit_index  # append_entries
+  C1 weakly authenticates C2 on PrevLogIdx, trueV, falseV  # next_node_idx: SUCCESS
+  C1 weakly authenticates C3 on PrevLogIdx, trueV, falseV  # next_node_idx: SUCCESS
+  C1 weakly authenticates C3 on PrevLogIdx, falseV, trueV  # next_node_idx: RESET, unconfirmed against logs
+  C2 weakly authenticates C1 on RequestId, Log_idx, Log_term  # apply_command_response
+  C3 weakly authenticates C1 on RequestId, Log_idx, Log_term  # apply_command_response
+ 
+  # Term/Last_log_index/Last_log_term only ever appear in the C1<->C2 vote exchange (see
+  # request_vote/response_vote note above) - C3 never receives them in the log, so it
+  # can't be a party to their secrecy goal. PrevLogIdx/PrevLogTerm reach C3 via
+  # append_entries, so those stay three-way.
+  Term secret between C1, C2
+  Last_log_index secret between C1, C2
+  Last_log_term secret between C1, C2
   PrevLogIdx secret between C1, C2, C3
   PrevLogTerm secret between C1, C2, C3
+ 
