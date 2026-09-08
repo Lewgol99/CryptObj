@@ -204,6 +204,12 @@ class TCPTransport(Transport):
         self._dbg_recv_total    = 0
         self._dbg_recv_verified = 0
         self._dbg_recv_dropped  = 0
+        # RAFT-DELTA tracking: remembers the prevLogIdx/entry-count of the last
+        # append_entries WE sent to each node, so that when that node's next_node_idx
+        # response comes back we can print the actual observed delta (next_node_idx -
+        # prevLogIdx) right there in the log line - no manual cross-referencing of
+        # separate send/receive log lines needed to check whether it's +1, +2, etc.
+        self._last_append_sent = {}   # node -> {'prevLogIdx':, 'entries_len':, 'term':}
 
         self._syncObj.addOnTickCallback(self._onTick)
 
@@ -512,6 +518,21 @@ class TCPTransport(Transport):
 
         self._dbg_recv_verified += 1
 
+        if isinstance(result, dict) and result.get('type') == 'next_node_idx':
+            next_idx = result.get('next_node_idx')
+            sent     = self._last_append_sent.get(node)
+            if sent is not None and sent.get('prevLogIdx') is not None and next_idx is not None:
+                delta = next_idx - sent['prevLogIdx']
+                print(Fore.BLUE + f"[RAFT-DELTA] RECV next_node_idx <- {getattr(node, 'id', node)} "
+                      f"next_node_idx={next_idx} success={result.get('success')} reset={result.get('reset')} "
+                      f"| matched to last append_entries sent: prevLogIdx={sent['prevLogIdx']} "
+                      f"entries_len={sent['entries_len']} term={sent['term']} "
+                      f"=> DELTA(next_node_idx - prevLogIdx)={delta}")
+            else:
+                print(Fore.BLUE + f"[RAFT-DELTA] RECV next_node_idx <- {getattr(node, 'id', node)} "
+                      f"next_node_idx={next_idx} success={result.get('success')} reset={result.get('reset')} "
+                      f"| no prior append_entries recorded for this node yet - delta unknown")
+
         if self._dbg_recv_total % 50 == 0:
             self._dbg_print_stats()
 
@@ -580,6 +601,20 @@ class TCPTransport(Transport):
             return self._connections[node].state == CONNECTION_STATE.CONNECTED
 
         self._dbg_send_total += 1
+
+        if isinstance(message, dict) and message.get('type') == 'append_entries':
+            entries      = message.get('entries', []) or []
+            prevLogIdx   = message.get('prevLogIdx')
+            self._last_append_sent[node] = {
+                'prevLogIdx':  prevLogIdx,
+                'entries_len': len(entries),
+                'term':        message.get('term'),
+            }
+            print(Fore.BLUE + f"[RAFT-DELTA] SEND append_entries -> {getattr(node, 'id', node)} "
+                  f"term={message.get('term')} prevLogIdx={prevLogIdx} "
+                  f"prevLogTerm={message.get('prevLogTerm')} commit_index={message.get('commit_index')} "
+                  f"entries_len={len(entries)}")
+
         try:
             recipient_ips  = node.address 
             other_ips = sorted(n.address for n in self._nodes if n != node) # add other_ips to compute recipiant and other seperately 
