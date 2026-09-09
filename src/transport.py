@@ -104,8 +104,6 @@ def _wrap_and_sign(signer, message, sender_ip, recipient_ips, other_ips, sign_en
         payload = pickle.dumps(message)
 
     if not sign_enabled:
-        # --no-crypto: skip signing entirely, header carries sig_len=0 explicitly
-        # so the receiver knows this is intentionally unsigned, not a failure.
         header = struct.pack('!BH', flags, 0)
         return header + payload
 
@@ -147,14 +145,9 @@ def _unwrap_and_verify(signer, peer_public_key, raw, verify_enabled=True):
         else:
             print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
 
-        # Strip the IP prefix (sender_ip,recipient,...||) that was prepended during signing.
-        # Only ever added by _wrap_and_sign when sign_enabled=True, so only strip it here
-        # under the same condition — otherwise this can accidentally match '||' occurring
-        # naturally inside raw pickled bytes and truncate/corrupt an unsigned payload.
         sep_index = payload.find(b'||')
         if sep_index != -1:
             payload = payload[sep_index + 2:]
-    # else: --no-crypto — verification and prefix-stripping both intentionally skipped
 
     if flags & _FLAG_WAS_DICT:
         try:
@@ -172,14 +165,7 @@ class TCPTransport(Transport):
         self.signer = DigitalSignature()
         self.signer.Load_Private_Key()
         self._syncObj = syncObj
-        # Reuses the same signal conf.password/--no-crypto already produces —
-        # no new flag, just extending it to also gate per-message signing.
-        # Handshake authentication (connection setup, once per peer) is left
-        # untouched; this only covers the ongoing per-message send/receive path.
         self._crypto_enabled = syncObj.encryptor is not None
-        # Separate file from latency_measurements.csv (encrypt/decrypt/roundtrip) —
-        # this times the send/receive wrapper functions themselves, which run in
-        # both crypto and no-crypto modes, giving directly comparable numbers.
         self._sr_latency_monitor = LatencyMonitor()
         self._server = None
         self._connections = {}
@@ -204,11 +190,6 @@ class TCPTransport(Transport):
         self._dbg_recv_total    = 0
         self._dbg_recv_verified = 0
         self._dbg_recv_dropped  = 0
-        # RAFT-DELTA tracking: remembers the prevLogIdx/entry-count of the last
-        # append_entries WE sent to each node, so that when that node's next_node_idx
-        # response comes back we can print the actual observed delta (next_node_idx -
-        # prevLogIdx) right there in the log line - no manual cross-referencing of
-        # separate send/receive log lines needed to check whether it's +1, +2, etc.
         self._last_append_sent = {}   # node -> {'prevLogIdx':, 'entries_len':, 'term':}
 
         self._syncObj.addOnTickCallback(self._onTick)
@@ -227,12 +208,6 @@ class TCPTransport(Transport):
             'label': label,
             'latency_ms': round(elapsed_ms, 6)
         })
-        # Append only the new row (O(1)) instead of periodically rewriting the
-        # whole (ever-growing) list to disk via pandas (O(n) per flush, O(n^2)
-        # over the life of the run). The old version stalled the transport's
-        # send/receive path for longer and longer as the run progressed,
-        # which showed up as a spurious upward trend in commit latency that
-        # had nothing to do with Raft or the crypto config under test.
         self._sr_latency_monitor.append_last('send_receive_latency')
 
     def _dbg_print_stats(self):
@@ -320,7 +295,6 @@ class TCPTransport(Transport):
                 signature       = message.get('signature')
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                # Must match exactly what _sendSelfAddress builds with sign_raw
                 signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
@@ -433,7 +407,6 @@ class TCPTransport(Transport):
         except FileNotFoundError:
             print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
 
-        # Build the exact byte sequence the verifier will reconstruct, sign it raw
         cluster        = sorted([self._selfNode.address] + [n.address for n in self._nodes])
         signed_message = (','.join(cluster) + '||').encode() + our_cert.encode()
         signature      = self.signer.sign_raw(signed_message)
@@ -461,7 +434,6 @@ class TCPTransport(Transport):
             if peer_cert and peer_node_name and signature:
                 signing_key_pem = message.get('signing_public_key')
                 peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
-                # Must match exactly what _sendSelfAddress builds with sign_raw
                 signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
                 if not self.signer.validate(peer_public_key, signed_message, signature):
                     print(Fore.RED + f'Error: {peer_node_name} digital signature rejected!')
@@ -615,9 +587,14 @@ class TCPTransport(Transport):
                   f"prevLogTerm={message.get('prevLogTerm')} commit_index={message.get('commit_index')} "
                   f"entries_len={len(entries)}")
 
+        if isinstance(message, dict) and message.get('type') == 'next_node_idx':
+            print(Fore.BLUE + f"[RAFT-DELTA] SEND next_node_idx -> {getattr(node, 'id', node)} "
+                  f"next_node_idx={message.get('next_node_idx')} success={message.get('success')} "
+                  f"reset={message.get('reset')}")
+
         try:
-            recipient_ips  = node.address 
-            other_ips = sorted(n.address for n in self._nodes if n != node) # add other_ips to compute recipiant and other seperately 
+            recipient_ips  = node.address
+            other_ips = sorted(n.address for n in self._nodes if n != node)
             _send_start = time.perf_counter()
             signed_message = _wrap_and_sign(
                 self.signer,
