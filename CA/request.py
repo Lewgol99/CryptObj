@@ -11,6 +11,12 @@ CA_URL = f"http://{server['server']['addr']}:{server['server']['port']}"
 with open('scale_nodes.json', 'r') as file:
     nodes = json.load(file)
 
+_print_lock = threading.Lock()
+
+def _safe_print(msg):
+    with _print_lock:
+        print(msg)
+
 def wait_for_ca(max_retries=30, delay=5):
     for attempt in range(max_retries):
         try:
@@ -62,7 +68,7 @@ def fetch_one_certificate(name, max_retries=30, delay=5):
                 if cert_pem:
                     with open(f'{name}_certificate.pem', 'w') as f:
                         f.write(cert_pem)
-                    print(Fore.GREEN + f'✓ Fetched {name}_certificate.pem')
+                    _safe_print(Fore.GREEN + f'✓ Fetched {name}_certificate.pem')
                     return True
                 else:
                     print(Fore.YELLOW + f'No certificate yet for {name}, retrying in {delay}s...')
