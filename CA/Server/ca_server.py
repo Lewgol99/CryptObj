@@ -33,7 +33,7 @@ def sign_csr():
             cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
             with open(f'issued_certificates/{node_name}_certificate.pem', 'w') as f:
                 f.write(cert_pem)
-            print(f'✓ Stored {node_name}_certificate.pem')
+            print(f'✓ Stored {node_name}_certificate.pem (requested by {request.remote_addr})', flush=True)
             return jsonify({'certificate': cert_pem}), 200
     except Exception as e:
         print(f'Error: {e}')
@@ -43,13 +43,17 @@ def sign_csr():
 def get_certificate(node_name):
     cert_path = f'issued_certificates/{node_name}_certificate.pem'
     if os.path.exists(cert_path):
+        print(f'[get_certificate] served {node_name} to {request.remote_addr}', flush=True)
         with open(cert_path, 'r') as f:
             return jsonify({'certificate': f.read()}), 200
+    print(f'[get_certificate] 404 for {node_name} (requested by {request.remote_addr})', flush=True)
     return jsonify({'error': 'Not found'}), 404
 
 @app.route('/get_root_certificate')
 def get_root_certificate():
     if os.path.exists('certificate.pem'):
+        print(f'[get_root_certificate] served root cert to {request.remote_addr}', flush=True)
         with open('certificate.pem', 'r') as f:
             return jsonify({'certificate': f.read()}), 200
+    print(f'[get_root_certificate] 404 (requested by {request.remote_addr})', flush=True)
     return jsonify({'error': 'Not found'}), 404
