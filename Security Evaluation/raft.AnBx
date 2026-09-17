@@ -2,7 +2,7 @@ Protocol: CryptObj AnB
  
 Types:
   Agent C1,C2,C3;   # candidates
-  Number Term, Last_log_index, Last_log_term, PrevLogIdx, PrevLogTerm, Commit_index, Command;   # variables - values change every round/entry, matches paper/repo convention
+  Number Term, Last_log_index, Last_log_term, PrevLogIdx, PrevLogTerm, Commit_index, Command, Entries;   # variables - values change every round/entry, matches paper/repo convention
   Number trueV, falseV;    # boolean-like flag constants (renamed from true/false - those are reserved keywords in ProVerif and block verification)
   Number RequestId, Log_idx, Log_term;   # apply_command_response fields - opaque correlation id + commit position, no succ/pre relationship
   Number Nonce,X;   # fresh and random value generated
@@ -31,7 +31,7 @@ C2 -> C1: {{C2, C1, C3, response_vote, Term}inv(sk(C2))}pk(C1)
 
 # as166h-node001-10.166.0.10 | [PAYLOAD] pre-sign structure: identity=(10.166.0.10:45025,10.166.0.12:45025,10.166.0.11:45025)
 #|| data={'type': 'append_entries', 'term': 1, 'commit_index': 2, 'entries': [(b'\x01', 2, 1)], 'prevLogIdx': 1, 'prevLogTerm': 0}
-C1 -> C3: {{C1, C3, C2, append_entries, Term, Commit_index, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C3)
+C1 -> C3: {{C1, C3, C2, append_entries, Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C3)
 
 # as166h-node003-10.166.0.12 | [PAYLOAD] pre-sign structure: identity=(10.166.0.12:45025,10.166.0.10:45025,10.166.0.11:45025)
 #|| data={'type': 'next_node_idx', 'next_node_idx': 3, 'reset': False, 'success': True}
@@ -47,7 +47,7 @@ C3 -> C1: {{C3, C1, C2, apply_command, Command, RequestId}inv(sk(C3))}pk(C1)
 
 # as166h-node001-10.166.0.10 | [PAYLOAD] pre-sign structure: identity=(10.166.0.10:45025,10.166.0.11:45025,10.166.0.12:45025)
 #|| data={'type': 'append_entries', 'term': 1, 'commit_index': 1, 'entries': [(b'\x01', 2, 1)], 'prevLogIdx': 1, 'prevLogTerm': 0}
-C1 -> C2: {{C1, C2, C3, append_entries, Term, Commit_index, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C2)
+C1 -> C2: {{C1, C2, C3, append_entries, Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C2)
 
 # as166h-node002-10.166.0.11 | [PAYLOAD] pre-sign structure: identity=(10.166.0.11:45025,10.166.0.10:45025,10.166.0.12:45025)
 #|| data={'type': 'next_node_idx', 'next_node_idx': 3, 'reset': False, 'success': True}
@@ -58,19 +58,18 @@ C2 -> C1: {{C2, C1, C3, next_node_idx, succ(PrevLogIdx), falseV, trueV}inv(sk(C2
 C1 -> C2: {{C1, C2, C3, apply_command_response, RequestId, Log_idx, Log_term}inv(sk(C1))}pk(C2)
  
 Goals:
-  C1 weakly authenticates C2 on Term, Commit_index, PrevLogIdx, PrevLogTerm      # append_entries
-  C3 weakly authenticates C2 on Term, Commit_index, PrevLogIdx, PrevLogTerm      # append_entries
-  C1 weakly authenticates C2 on RequestId, Log_idx, Log_term                    # apply_command_response
-  C3 weakly authenticates C2 on RequestId, Log_idx, Log_term                    # apply_command_response
-  C3 weakly authenticates C2 on Term, Last_log_index, Last_log_term             # request_vote
-  C2 weakly authenticates C3 on Term                                            # response_vote
-  C2 weakly authenticates C1 on falseV, trueV                                   # next_node_idx
-  C2 weakly authenticates C3 on falseV, trueV                                   # next_node_idx
-  C2 weakly authenticates C1 on RequestId                                       # apply_command
-  C2 weakly authenticates C3 on RequestId                                       # apply_command
- 
+  C2 weakly authenticates C1 on Term, Last_log_index, Last_log_term        # request_vote      (action 1)
+  C1 weakly authenticates C2 on Term                                       # response_vote      (action 2)
+  C3 weakly authenticates C1 on Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm # append_entries    (action 3)
+  C1 weakly authenticates C3 on falseV, trueV                              # next_node_idx      (action 4)
+  C3 weakly authenticates C1 on RequestId, Log_idx, Log_term               # apply_command_response (action 5)
+  C1 weakly authenticates C3 on Command, RequestId                         # apply_command      (action 6)
+  C2 weakly authenticates C1 on Term, Commit_index, PrevLogIdx, PrevLogTerm # append_entries    (action 7)
+  C1 weakly authenticates C2 on falseV, trueV                              # next_node_idx      (action 8)
+  C2 weakly authenticates C1 on RequestId, Log_idx, Log_term               # apply_command_response (action 9)
+
   Term secret between C1, C2, C3
-  Last_log_index secret between C2, C3
-  Last_log_term secret between C2, C3
-  PrevLogIdx secret between C1, C2, C3
-  PrevLogTerm secret between C1, C2, C3
+  Last_log_index secret between C1, C2
+  Last_log_term secret between C1, C2
+  PrevLogIdx secret between C1, C3
+  PrevLogTerm secret between C1, C3
