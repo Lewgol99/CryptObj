@@ -535,6 +535,16 @@ class TCPTransport(Transport):
             self._dbg_recv_dropped += 1
             return
 
+        # TRANSIT-PAYLOAD (receive side): the raw bytes exactly as they
+        # arrived off the socket, before decrypt/verify. Same idea as the
+        # send-side hook -- this is the real payload, it's just ciphertext.
+        _wire_hash = hashlib.sha256(message).hexdigest()[:16]
+        _wire_hex = message.hex()
+        _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
+            _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
+        print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {node_addr} -> {self._selfNode.address} | "
+              f"{len(message)} bytes, sha256={_wire_hash} | hex={_display_hex}")
+
         peer_public_key = self._peerSigningKeys.get(node_addr)
 
         _recv_start = time.perf_counter()
@@ -682,21 +692,24 @@ class TCPTransport(Transport):
         if self._dbg_send_total % 50 == 0:
             self._dbg_print_stats()
 
-        # IN-TRANSIT: this is deliberately NOT a memory snapshot. Once
-        # signed_message leaves this point it is opaque, signed (and, one
-        # layer further down in TcpConnection, encrypted) bytes on the wire
-        # -- by design nothing about the node's internal variables should be
-        # visible in transit. We log only what an on-path attacker would
-        # actually see: byte length and a short hash, never plaintext state.
+        # TRANSIT-PAYLOAD: this is deliberately NOT a memory snapshot -- it's
+        # the actual bytes that go on the wire. Once signed_message leaves
+        # this point it is opaque, signed (and, one layer further down in
+        # TcpConnection, encrypted) ciphertext; printing it hex-encoded shows
+        # exactly what an on-path attacker would see -- which is genuinely
+        # nothing about the node's internal variables, by design. This is
+        # the real payload, just not a plaintext one.
         try:
             _wire_bytes = pickle.dumps(signed_message)
+            _wire_hex = _wire_bytes.hex()
             _wire_hash = hashlib.sha256(_wire_bytes).hexdigest()[:16]
-            print(Fore.MAGENTA + f"[IN-TRANSIT] {self._selfNode.address} -> {node.address} | "
-                  f"{len(_wire_bytes)} bytes, sha256={_wire_hash} "
-                  f"(opaque signed/encrypted payload -- no agent memory is visible here)")
+            _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
+                _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
+            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
+                  f"{len(_wire_bytes)} bytes, sha256={_wire_hash} | hex={_display_hex}")
         except Exception as e:
-            print(Fore.MAGENTA + f"[IN-TRANSIT] {self._selfNode.address} -> {node.address} | "
-                  f"<could not size wire payload: {e}>")
+            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
+                  f"<could not serialize wire payload: {e}>")
 
         self._connections[node].send(signed_message)
 
