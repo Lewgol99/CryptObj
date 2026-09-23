@@ -202,6 +202,32 @@ class TCPTransport(Transport):
         else:
             self._ready = True
 
+    def _mem_snapshot(self, node=None):
+        """
+        Compact dump of this node's own in-memory Raft state, straight
+        from PySyncObj's public getStatus(). This is the state the node
+        is holding BEFORE it builds/sends a message (or before it lets
+        an incoming message change anything).
+        """
+        try:
+            status = self._syncObj.getStatus()
+        except Exception as e:
+            return {'error': str(e)}
+
+        snap = {
+            'state':        status.get('state'),
+            'leader':       status.get('leader'),
+            'raft_term':    status.get('raft_term'),
+            'commit_idx':   status.get('commit_idx'),
+            'last_applied': status.get('last_applied'),
+            'log_len':      status.get('log_len'),
+        }
+        if node is not None:
+            node_id = getattr(node, 'id', node)
+            snap['next_node_idx[peer]'] = status.get(f'next_node_idx_server_{node_id}')
+            snap['match_idx[peer]']     = status.get(f'match_idx_server_{node_id}')
+        return snap
+
     def _record_sr_latency(self, label, elapsed_ms):
         self._sr_latency_monitor._results_list.append({
             'measurement': len(self._sr_latency_monitor._results_list) + 1,
@@ -508,7 +534,18 @@ class TCPTransport(Transport):
         if self._dbg_recv_total % 50 == 0:
             self._dbg_print_stats()
 
-        self._onMessageReceived(node, result)
+        if isinstance(result, dict) and result.get('type') in ('append_entries', 'next_node_idx'):
+            mem_before = self._mem_snapshot(node)
+            print(Fore.YELLOW + f"[MEM-BEFORE-RECV] {getattr(self._selfNode, 'id', self._selfNode)} "
+                  f"<- {getattr(node, 'id', node)} | {mem_before}")
+
+            self._onMessageReceived(node, result)
+
+            mem_after = self._mem_snapshot(node)
+            print(Fore.YELLOW + f"[MEM-AFTER-RECV]  {getattr(self._selfNode, 'id', self._selfNode)} "
+                  f"<- {getattr(node, 'id', node)} | {mem_after}")
+        else:
+            self._onMessageReceived(node, result)
 
     def _onDisconnected(self, conn):
         import time as _time
@@ -582,12 +619,18 @@ class TCPTransport(Transport):
                 'entries_len': len(entries),
                 'term':        message.get('term'),
             }
+            mem_before = self._mem_snapshot(node)
+            print(Fore.YELLOW + f"[MEM-BEFORE-SEND] {getattr(self._selfNode, 'id', self._selfNode)} "
+                  f"-> {getattr(node, 'id', node)} | {mem_before}")
             print(Fore.BLUE + f"[RAFT-DELTA] SEND append_entries -> {getattr(node, 'id', node)} "
                   f"term={message.get('term')} prevLogIdx={prevLogIdx} "
                   f"prevLogTerm={message.get('prevLogTerm')} commit_index={message.get('commit_index')} "
                   f"entries_len={len(entries)}")
 
         if isinstance(message, dict) and message.get('type') == 'next_node_idx':
+            mem_before = self._mem_snapshot(node)
+            print(Fore.YELLOW + f"[MEM-BEFORE-SEND] {getattr(self._selfNode, 'id', self._selfNode)} "
+                  f"-> {getattr(node, 'id', node)} | {mem_before}")
             print(Fore.BLUE + f"[RAFT-DELTA] SEND next_node_idx -> {getattr(node, 'id', node)} "
                   f"next_node_idx={message.get('next_node_idx')} success={message.get('success')} "
                   f"reset={message.get('reset')}")
