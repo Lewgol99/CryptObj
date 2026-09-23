@@ -1,1 +1,738 @@
 
+from .config import FAIL_REASON
+from .dns_resolver import globalDnsResolver
+from .monotonic import monotonic as monotonicTime
+from .node import Node, TCPNode
+from .tcp_connection import TcpConnection, CONNECTION_STATE
+from .tcp_server import TcpServer
+import functools
+import hashlib
+import os
+import pickle
+import struct
+import threading
+import time
+import random
+from digital_signature import DigitalSignature
+from latency_monitor import LatencyMonitor
+from colorama import Fore
+
+class TransportNotReadyError(Exception):
+    """Transport failed to get ready for operation."""
+
+
+# Fields we deliberately never print, even though they live on the SyncObj
+# instance. This is NOT an attempt to hide "agent memory" from the log for
+# debugging purposes -- it exists because these objects (a) hold private key
+# material / live socket & threading handles that must never be serialized
+# into a text log, and (b) are not meaningfully printable (locks, threads,
+# the transport's own self-reference, etc.) and would either crash repr() or
+# blow up the log with megabytes of noise on every single message.
+#
+# If you are using this log to audit what an AnB/Dolev-Yao model claims an
+# agent "knows", remember that inv(sk(Ci)) and the encryptor's private key
+# ARE part of that agent's real knowledge -- they are just intentionally not
+# printed here for operational-security reasons, not because they aren't
+# part of the node's memory.
+_MEM_SNAPSHOT_BLOCKLIST = {
+    '_SyncObj__thread', '_SyncObj__mainThread', '_SyncObj__pipeNotifier',
+    '_SyncObj__transport', '_SyncObj__encryptor', '_SyncObj__serializer',
+    '_SyncObj__onTickCallbacksLock',
+}
+
+
+def _full_memory_snapshot(syncObj):
+    """
+    Returns EVERY instance attribute currently held by this SyncObj node,
+    as a {name: repr(value)} dict, except for _MEM_SNAPSHOT_BLOCKLIST.
+    Unlike getStatus() (which is a curated ~15-field summary), this walks
+    the real __dict__, so it also picks up votedForNodeId, votesCount,
+    raftElectionDeadline, the command queues, etc. -- anything the object
+    actually holds in memory at the moment this is called.
+    """
+    snapshot = {}
+    for name, value in vars(syncObj).items():
+        if name in _MEM_SNAPSHOT_BLOCKLIST:
+            snapshot[name] = '<redacted: not printed, see _MEM_SNAPSHOT_BLOCKLIST>'
+            continue
+        try:
+            text = repr(value)
+        except Exception as e:
+            text = f'<unrepresentable: {e}>'
+        if len(text) > 300:
+            text = text[:300] + f'...<truncated, {len(text)} chars total>'
+        snapshot[name] = text
+    return snapshot
+
+
+def _print_mem_snapshot(tag, selfAddr, peerAddr, syncObj, arrow):
+    print(Fore.YELLOW + f"[{tag}] {selfAddr} {arrow} {peerAddr} | " +
+          repr(_full_memory_snapshot(syncObj)))
+
+class Transport(object):
+
+    def __init__(self, syncObj, selfNode, otherNodes):
+        self._onMessageReceivedCallback = None
+        self._onNodeConnectedCallback = None
+        self._onNodeDisconnectedCallback = None
+        self._onReadonlyNodeConnectedCallback = None
+        self._onReadonlyNodeDisconnectedCallback = None
+        self._onUtilityMessageCallbacks = {}
+
+    def setOnMessageReceivedCallback(self, callback):
+        self._onMessageReceivedCallback = callback
+
+    def setOnNodeConnectedCallback(self, callback):
+        self._onNodeConnectedCallback = callback
+
+    def setOnNodeDisconnectedCallback(self, callback):
+        self._onNodeDisconnectedCallback = callback
+
+    def setOnReadonlyNodeConnectedCallback(self, callback):
+        self._onReadonlyNodeConnectedCallback = callback
+
+    def setOnReadonlyNodeDisconnectedCallback(self, callback):
+        self._onReadonlyNodeDisconnectedCallback = callback
+
+    def setOnUtilityMessageCallback(self, message, callback):
+        if callback:
+            self._onUtilityMessageCallbacks[message] = callback
+        elif message in self._onUtilityMessageCallbacks:
+            del self._onUtilityMessageCallbacks[message]
+
+    def _onMessageReceived(self, node, message):
+        if self._onMessageReceivedCallback is not None:
+            self._onMessageReceivedCallback(node, message)
+
+    def _onNodeConnected(self, node):
+        if self._onNodeConnectedCallback is not None:
+            self._onNodeConnectedCallback(node)
+
+    def _onNodeDisconnected(self, node):
+        if self._onNodeDisconnectedCallback is not None:
+            self._onNodeDisconnectedCallback(node)
+
+    def _onReadonlyNodeConnected(self, node):
+        if self._onReadonlyNodeConnectedCallback is not None:
+            self._onReadonlyNodeConnectedCallback(node)
+
+    def _onReadonlyNodeDisconnected(self, node):
+        if self._onReadonlyNodeDisconnectedCallback is not None:
+            self._onReadonlyNodeDisconnectedCallback(node)
+
+    def tryGetReady(self):
+        pass
+
+    @property
+    def ready(self):
+        return True
+
+    def waitReady(self):
+        pass
+
+    def addNode(self, node):
+        pass
+
+    def dropNode(self, node):
+        pass
+
+    def send(self, node, message):
+        raise NotImplementedError
+
+    def destroy(self):
+        pass
+
+
+_FLAG_WAS_DICT = 0x01
+
+
+def _wrap_and_sign(signer, message, sender_ip, recipient_ips, other_ips, sign_enabled=True):
+    if isinstance(message, bytes):
+        flags   = 0x00
+        payload = message
+    else:
+        flags   = _FLAG_WAS_DICT
+        payload = pickle.dumps(message)
+
+    if not sign_enabled:
+        header = struct.pack('!BH', flags, 0)
+        return header + payload
+
+    result = signer.sign(payload, sender_ip, recipient_ips, other_ips)
+    if result is None:
+        print(Fore.YELLOW + '[SIGN] Signing failed — sending unsigned (sig_len=0)')
+        signature      = b''
+        signed_payload = payload
+    else:
+        signature, signed_payload = result
+
+    header = struct.pack('!BH', flags, len(signature))
+    return header + signature + signed_payload
+
+
+def _unwrap_and_verify(signer, peer_public_key, raw, verify_enabled=True):
+    """Verify + deserialise a signed Raft message. Returns the original message object, or None on failure."""
+    if len(raw) < 3:
+        print(Fore.RED + '[VERIFY] Message too short to contain header')
+        return None
+
+    flags, sig_len = struct.unpack('!BH', raw[:3])
+
+    if len(raw) < 3 + sig_len:
+        print(Fore.RED + '[VERIFY] Message truncated inside signature')
+        return None
+
+    signature = raw[3:3 + sig_len]
+    payload   = raw[3 + sig_len:]
+
+    if verify_enabled:
+        if peer_public_key is not None:
+            if sig_len == 0:
+                print(Fore.RED + '[VERIFY] No signature present but key exists — dropping!')
+                return None
+            if not signer.validate(peer_public_key, payload, signature):
+                print(Fore.RED + '[VERIFY] Signature FAILED — dropping message!')
+                return None
+        else:
+            print(Fore.YELLOW + '[VERIFY] No peer key stored — passing through unverified')
+
+        sep_index = payload.find(b'||')
+        if sep_index != -1:
+            payload = payload[sep_index + 2:]
+
+    if flags & _FLAG_WAS_DICT:
+        try:
+            return pickle.loads(payload)
+        except Exception as e:
+            print(Fore.RED + f'[VERIFY] pickle.loads failed: {e}')
+            return None
+
+    return payload
+
+
+class TCPTransport(Transport):
+    def __init__(self, syncObj, selfNode, otherNodes):
+        super(TCPTransport, self).__init__(syncObj, selfNode, otherNodes)
+        self.signer = DigitalSignature()
+        self.signer.Load_Private_Key()
+        self._syncObj = syncObj
+        self._crypto_enabled = syncObj.encryptor is not None
+        self._sr_latency_monitor = LatencyMonitor()
+        self._server = None
+        self._connections = {}
+        self._unknownConnections = set()
+        self._selfNode = selfNode
+        self._selfIsReadonlyNode = selfNode is None
+        self._nodes = set()
+        self._readonlyNodes = set()
+        self._nodeAddrToNode = {}
+        self._lastConnectAttempt = {}
+        self._preventConnectNodes = set()
+        self._readonlyNodesCounter = 0
+        self._lastBindAttemptTime = 0
+        self._bindAttempts = 0
+        self._bindOverEvent = threading.Event()
+        self._ready = False
+        self._send_random_sleep_duration = 0
+        self._peerSigningKeys = {}
+
+        self._dbg_send_total    = 0
+        self._dbg_send_signed   = 0
+        self._dbg_recv_total    = 0
+        self._dbg_recv_verified = 0
+        self._dbg_recv_dropped  = 0
+        self._last_append_sent = {}   # node -> {'prevLogIdx':, 'entries_len':, 'term':}
+
+        self._syncObj.addOnTickCallback(self._onTick)
+
+        for node in otherNodes:
+            self.addNode(node)
+
+        if not self._selfIsReadonlyNode:
+            self._createServer()
+        else:
+            self._ready = True
+
+    def _record_sr_latency(self, label, elapsed_ms):
+        self._sr_latency_monitor._results_list.append({
+            'measurement': len(self._sr_latency_monitor._results_list) + 1,
+            'label': label,
+            'latency_ms': round(elapsed_ms, 6)
+        })
+        self._sr_latency_monitor.append_last('send_receive_latency')
+
+    def _dbg_print_stats(self):
+        print(Fore.CYAN + '[SIGN STATS] ──────────────────────────────────────────')
+        print(Fore.CYAN + f'  SEND  total={self._dbg_send_total}  signed={self._dbg_send_signed}')
+        print(Fore.CYAN + f'  RECV  total={self._dbg_recv_total}  verified={self._dbg_recv_verified}  dropped={self._dbg_recv_dropped}')
+        print(Fore.CYAN + '────────────────────────────────────────────────────────')
+
+    def _connToNode(self, conn):
+        for node in self._connections:
+            if self._connections[node] is conn:
+                return node
+        return None
+
+    def tryGetReady(self):
+        self._maybeBind()
+
+    @property
+    def ready(self):
+        return self._ready
+
+    def _createServer(self):
+        conf = self._syncObj.conf
+        bindAddr = conf.bindAddress
+        seflAddr = getattr(self._selfNode, 'address')
+        if bindAddr is not None:
+            host, port = bindAddr.rsplit(':', 1)
+        elif seflAddr is not None:
+            host, port = seflAddr.rsplit(':', 1)
+            if ':' in host:
+                host = '::'
+            else:
+                host = '0.0.0.0'
+        else:
+            raise RuntimeError('Unable to determine bind address')
+
+        if host != '0.0.0.0':
+            host = globalDnsResolver().resolve(host)
+        self._server = TcpServer(self._syncObj._poller, host, port,
+                                 onNewConnection=self._onNewIncomingConnection,
+                                 sendBufferSize=conf.sendBufferSize,
+                                 recvBufferSize=conf.recvBufferSize,
+                                 connectionTimeout=conf.connectionTimeout)
+
+    def _maybeBind(self):
+        if self._ready or self._selfIsReadonlyNode or monotonicTime() < self._lastBindAttemptTime + self._syncObj.conf.bindRetryTime:
+            return
+        self._lastBindAttemptTime = monotonicTime()
+        try:
+            self._server.bind()
+        except Exception as e:
+            self._bindAttempts += 1
+            if self._syncObj.conf.maxBindRetries and self._bindAttempts >= self._syncObj.conf.maxBindRetries:
+                self._bindOverEvent.set()
+                raise TransportNotReadyError
+        else:
+            self._ready = True
+            self._bindOverEvent.set()
+
+    def _onTick(self):
+        try:
+            self._maybeBind()
+        except TransportNotReadyError:
+            pass
+        self._connectIfNecessary()
+
+    def _onNewIncomingConnection(self, conn):
+        self._unknownConnections.add(conn)
+        conn.setOnMessageReceivedCallback(functools.partial(self._onIncomingMessageReceived, conn))
+        conn.setOnDisconnectedCallback(functools.partial(self._onDisconnected, conn))
+
+    def _onIncomingMessageReceived(self, conn, message):
+        peer_node_name = None
+
+        if isinstance(message, list) and self._onUtilityMessage(conn, message):
+            return
+
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            peer_node_name  = message.get('node_name')
+            peer_cert       = message.get('certificate')
+            peer_address    = message.get('address')
+            cluster         = message.get('cluster', [])
+
+            if peer_cert and peer_node_name:
+                signature       = message.get('signature')
+                signing_key_pem = message.get('signing_public_key')
+                peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
+                if not self.signer.validate(peer_public_key, signed_message, signature):
+                    print(Fore.RED + f'Error: {peer_node_name} Failed Authentication!')
+                    conn.disconnect()
+                    return
+                print(Fore.GREEN + f'Success: {peer_node_name} Authenticated!')
+                self._peerSigningKeys[peer_address] = peer_public_key
+
+            if peer_cert and peer_node_name:
+                try:
+                    with open(f'{peer_node_name}_certificate.pem', 'w') as f:
+                        f.write(peer_cert)
+                    print(Fore.YELLOW + f"[INCOMING] Received and saved certificate from {peer_node_name}")
+                    if self._syncObj.encryptor:
+                        self._syncObj.encryptor._load_certificates()
+                except Exception as e:
+                    print(Fore.YELLOW + f"[INCOMING] Failed to save certificate from {peer_node_name}: {e}")
+
+            self._sendSelfAddress(conn)
+            message = peer_address
+
+        node = self._nodeAddrToNode[message] if message in self._nodeAddrToNode else None
+
+        if node is None and message != 'readonly':
+            print(Fore.RED + f'[HANDSHAKE] Unknown node address: {repr(message)}')
+            conn.disconnect()
+            self._unknownConnections.discard(conn)
+            return
+
+        readonly = node is None
+        if readonly:
+            nodeId = str(self._readonlyNodesCounter)
+            node = Node(nodeId)
+            self._readonlyNodes.add(node)
+            self._readonlyNodesCounter += 1
+
+        self._unknownConnections.discard(conn)
+        self._connections[node] = conn
+
+        if self._syncObj.encryptor:
+            if hasattr(self._syncObj.encryptor, 'session_for'):
+                if peer_node_name:
+                    conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+                    if hasattr(conn.encryptor, 'set_flush_callback'):
+                        conn.encryptor.set_flush_callback(functools.partial(conn.send, b''))
+                else:
+                    print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
+            else:
+                conn.encryptor = self._syncObj.encryptor
+
+        conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
+
+        if not readonly:
+            self._onNodeConnected(node)
+        else:
+            self._onReadonlyNodeConnected(node)
+
+    def _onUtilityMessage(self, conn, message):
+        command = message[0]
+        if command in self._onUtilityMessageCallbacks:
+            message[0] = command.upper()
+            callback = functools.partial(self._utilityCallback, conn=conn, args=message)
+            try:
+                self._onUtilityMessageCallbacks[command](message[1:], callback)
+            except Exception as e:
+                conn.send(str(e))
+            return True
+
+    def _utilityCallback(self, res, err, conn, args):
+        if not (err is None and res):
+            cmdResult = 'SUCCESS' if err == FAIL_REASON.SUCCESS else 'FAIL'
+            res = ' '.join(map(str, [cmdResult] + args))
+        conn.send(res)
+
+    def _shouldConnect(self, node):
+        return isinstance(node, TCPNode) and node not in self._preventConnectNodes and (
+            self._selfIsReadonlyNode or self._selfNode.address > node.address)
+
+    def _connectIfNecessarySingle(self, node):
+        if node in self._connections and self._connections[node].state != CONNECTION_STATE.DISCONNECTED:
+            return True
+        if not self._shouldConnect(node):
+            return False
+        assert node in self._connections
+        if node in self._lastConnectAttempt and monotonicTime() - self._lastConnectAttempt[node] < self._syncObj.conf.connectionRetryTime:
+            return False
+        self._lastConnectAttempt[node] = monotonicTime()
+        return self._connections[node].connect(node.ip, node.port)
+
+    def _connectIfNecessary(self):
+        for node in self._nodes:
+            self._connectIfNecessarySingle(node)
+
+    def _sendSelfAddress(self, conn):
+        """Send handshake unencrypted — conn.encryptor must be None when called."""
+        node_name = getattr(self._syncObj.conf, 'node_name', None)
+        our_cert  = None
+        signing_public_key = None
+
+        try:
+            with open('signing_public_key.pem', 'r') as file:
+                signing_public_key = file.read()
+        except FileNotFoundError:
+            signing_public_key = None
+
+        try:
+            cert_file = f'{node_name}_certificate.pem' if node_name else 'certificate.pem'
+            with open(cert_file, 'r') as f:
+                our_cert = f.read()
+        except FileNotFoundError:
+            print(Fore.YELLOW + f"Warning: Certificate file not found for {node_name}")
+
+        cluster        = sorted([self._selfNode.address] + [n.address for n in self._nodes])
+        signed_message = (','.join(cluster) + '||').encode() + our_cert.encode()
+        signature      = self.signer.sign_raw(signed_message)
+
+        addr = 'readonly' if self._selfIsReadonlyNode else self._selfNode.address
+        conn.send({'type': 'handshake', 'node_name': node_name, 'address': addr,
+                   'certificate': our_cert, 'signature': signature,
+                   'signing_public_key': signing_public_key,
+                   'cluster': cluster})
+
+    def _onOutgoingConnected(self, conn):
+        conn.setOnMessageReceivedCallback(functools.partial(self._onOutgoingHandshakeResponse, conn))
+        self._sendSelfAddress(conn)
+
+    def _onOutgoingHandshakeResponse(self, conn, message):
+        peer_node_name = None
+
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            peer_node_name  = message.get('node_name')
+            peer_cert       = message.get('certificate')
+            peer_address    = message.get('address')
+            signature       = message.get('signature')
+            cluster         = message.get('cluster', [])
+
+            if peer_cert and peer_node_name and signature:
+                signing_key_pem = message.get('signing_public_key')
+                peer_public_key = self.signer.load_public_key_from_pem(signing_key_pem)
+                signed_message  = (','.join(cluster) + '||').encode() + peer_cert.encode()
+                if not self.signer.validate(peer_public_key, signed_message, signature):
+                    print(Fore.RED + f'Error: {peer_node_name} digital signature rejected!')
+                    conn.disconnect()
+                    return
+                print(Fore.GREEN + f'Success: {peer_node_name} Digital Signature Authenticated!')
+                self._peerSigningKeys[peer_address] = peer_public_key
+
+                try:
+                    with open(f'{peer_node_name}_certificate.pem', 'w') as f:
+                        f.write(peer_cert)
+                    print(Fore.YELLOW + f"[OUTGOING] Received and saved certificate from {peer_node_name}")
+                    if self._syncObj.encryptor:
+                        self._syncObj.encryptor._load_certificates()
+                except Exception as e:
+                    print(Fore.YELLOW + f"[OUTGOING] Failed to save certificate from {peer_node_name}: {e}")
+            else:
+                print(Fore.YELLOW + "[OUTGOING] Handshake missing certificate or node_name")
+
+        if self._syncObj.encryptor:
+            if hasattr(self._syncObj.encryptor, 'session_for'):
+                if peer_node_name:
+                    conn.encryptor = self._syncObj.encryptor.session_for(peer_node_name)
+                    if hasattr(conn.encryptor, 'set_flush_callback'):
+                        conn.encryptor.set_flush_callback(functools.partial(conn.send, b''))
+                else:
+                    print(Fore.RED + 'Error: No peer_node_name — cannot create TLS session for this connection')
+            else:
+                conn.encryptor = self._syncObj.encryptor
+
+        node = self._connToNode(conn)
+        conn.setOnMessageReceivedCallback(functools.partial(self._onVerifiedMessageReceived, node))
+        self._onNodeConnected(node)
+
+    def _onVerifiedMessageReceived(self, node, message):
+        self._dbg_recv_total += 1
+
+        node_addr = getattr(node, 'address', None)
+
+        # BEFORE-RECEIVE: `message` at this point is the raw signed/encrypted
+        # bytes straight off the socket -- nothing has been decrypted or
+        # verified yet. This snapshot captures our own memory state at the
+        # instant that raw payload arrives, before we act on it in any way.
+        _print_mem_snapshot('MEM-BEFORE-RECV', self._selfNode.address, node_addr,
+                             self._syncObj, '<-')
+
+        if not isinstance(message, bytes):
+            print(Fore.RED + f'[VERIFY] Unexpected non-bytes type={type(message).__name__} — dropping!')
+            self._dbg_recv_dropped += 1
+            return
+
+        # TRANSIT-PAYLOAD (receive side): the raw bytes exactly as they
+        # arrived off the socket, before decrypt/verify. Same idea as the
+        # send-side hook -- this is the real payload, it's just ciphertext.
+        _wire_hash = hashlib.sha256(message).hexdigest()[:16]
+        _wire_hex = message.hex()
+        _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
+            _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
+        print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {node_addr} -> {self._selfNode.address} | "
+              f"{len(message)} bytes, sha256={_wire_hash} | hex={_display_hex}")
+
+        peer_public_key = self._peerSigningKeys.get(node_addr)
+
+        _recv_start = time.perf_counter()
+        result = _unwrap_and_verify(self.signer, peer_public_key, message, verify_enabled=self._crypto_enabled)
+        _recv_elapsed_ms = (time.perf_counter() - _recv_start) * 1000
+        self._record_sr_latency('receive' if self._crypto_enabled else 'receive_no_crypto', _recv_elapsed_ms)
+
+        if result is None:
+            self._dbg_recv_dropped += 1
+            return
+
+        self._dbg_recv_verified += 1
+
+        if isinstance(result, dict) and result.get('type') == 'next_node_idx':
+            next_idx = result.get('next_node_idx')
+            sent     = self._last_append_sent.get(node)
+            if sent is not None and sent.get('prevLogIdx') is not None and next_idx is not None:
+                delta = next_idx - sent['prevLogIdx']
+                print(Fore.BLUE + f"[RAFT-DELTA] RECV next_node_idx <- {getattr(node, 'id', node)} "
+                      f"next_node_idx={next_idx} success={result.get('success')} reset={result.get('reset')} "
+                      f"| matched to last append_entries sent: prevLogIdx={sent['prevLogIdx']} "
+                      f"entries_len={sent['entries_len']} term={sent['term']} "
+                      f"=> DELTA(next_node_idx - prevLogIdx)={delta}")
+            else:
+                print(Fore.BLUE + f"[RAFT-DELTA] RECV next_node_idx <- {getattr(node, 'id', node)} "
+                      f"next_node_idx={next_idx} success={result.get('success')} reset={result.get('reset')} "
+                      f"| no prior append_entries recorded for this node yet - delta unknown")
+
+        if self._dbg_recv_total % 50 == 0:
+            self._dbg_print_stats()
+
+        self._onMessageReceived(node, result)
+
+        # AFTER-RECEIVE: self._onMessageReceived() above dispatches straight
+        # into SyncObj's own handler, which mutates raft state synchronously
+        # (term, log, commit index, votes, etc.) before returning here -- so
+        # this snapshot reflects state *after* the message has been applied.
+        _print_mem_snapshot('MEM-AFTER-RECV', self._selfNode.address, node_addr,
+                             self._syncObj, '<-')
+
+    def _onDisconnected(self, conn):
+        import time as _time
+        print(Fore.MAGENTA + f"[DISCONNECT] t={_time.perf_counter():.3f} conn={id(conn)} "
+              f"node={self._connToNode(conn)}")
+        self._unknownConnections.discard(conn)
+        conn.encryptor = None
+        node = self._connToNode(conn)
+        if node is not None:
+            if node in self._nodes:
+                self._onNodeDisconnected(node)
+                self._connectIfNecessarySingle(node)
+            else:
+                self._readonlyNodes.discard(node)
+                self._onReadonlyNodeDisconnected(node)
+
+    def waitReady(self):
+        self._bindOverEvent.wait()
+        if not self._ready:
+            raise TransportNotReadyError
+
+    def addNode(self, node):
+        self._nodes.add(node)
+        self._nodeAddrToNode[node.address] = node
+        if self._shouldConnect(node):
+            conn = TcpConnection(
+                poller=self._syncObj._poller,
+                timeout=self._syncObj.conf.connectionTimeout,
+                sendBufferSize=self._syncObj.conf.sendBufferSize,
+                recvBufferSize=self._syncObj.conf.recvBufferSize,
+                keepalive=self._syncObj.conf.tcp_keepalive,
+            )
+            conn.setOnConnectedCallback(functools.partial(self._onOutgoingConnected, conn))
+            conn.setOnMessageReceivedCallback(functools.partial(self._onMessageReceived, node))
+            conn.setOnDisconnectedCallback(functools.partial(self._onDisconnected, conn))
+            self._connections[node] = conn
+
+    def dropNode(self, node):
+        conn = self._connections.pop(node, None)
+        if conn is not None:
+            self._preventConnectNodes.add(node)
+            conn.disconnect()
+            self._preventConnectNodes.remove(node)
+        if isinstance(node, TCPNode):
+            self._nodes.discard(node)
+            self._nodeAddrToNode.pop(node.address, None)
+        else:
+            self._readonlyNodes.discard(node)
+        self._lastConnectAttempt.pop(node, None)
+        node_addr = getattr(node, 'address', None)
+        if node_addr and node_addr in self._peerSigningKeys:
+            del self._peerSigningKeys[node_addr]
+
+    def send(self, node, message):
+        if node not in self._connections or self._connections[node].state != CONNECTION_STATE.CONNECTED:
+            return False
+        if self._send_random_sleep_duration:
+            time.sleep(random.random() * self._send_random_sleep_duration)
+
+        if isinstance(message, dict) and message.get('type') == 'handshake':
+            self._connections[node].send(message)
+            return self._connections[node].state == CONNECTION_STATE.CONNECTED
+
+        self._dbg_send_total += 1
+
+        _print_mem_snapshot('MEM-BEFORE-SEND', self._selfNode.address, node.address,
+                             self._syncObj, '->')
+
+        if isinstance(message, dict) and message.get('type') == 'append_entries':
+            entries      = message.get('entries', []) or []
+            prevLogIdx   = message.get('prevLogIdx')
+            self._last_append_sent[node] = {
+                'prevLogIdx':  prevLogIdx,
+                'entries_len': len(entries),
+                'term':        message.get('term'),
+            }
+            print(Fore.BLUE + f"[RAFT-DELTA] SEND append_entries -> {getattr(node, 'id', node)} "
+                  f"term={message.get('term')} prevLogIdx={prevLogIdx} "
+                  f"prevLogTerm={message.get('prevLogTerm')} commit_index={message.get('commit_index')} "
+                  f"entries_len={len(entries)}")
+
+        if isinstance(message, dict) and message.get('type') == 'next_node_idx':
+            print(Fore.BLUE + f"[RAFT-DELTA] SEND next_node_idx -> {getattr(node, 'id', node)} "
+                  f"next_node_idx={message.get('next_node_idx')} success={message.get('success')} "
+                  f"reset={message.get('reset')}")
+
+        try:
+            recipient_ips  = node.address
+            other_ips = sorted(n.address for n in self._nodes if n != node)
+            _send_start = time.perf_counter()
+            signed_message = _wrap_and_sign(
+                self.signer,
+                message,
+                self._selfNode.address,
+                recipient_ips,
+                other_ips,
+                sign_enabled=self._crypto_enabled,
+            )
+            _send_elapsed_ms = (time.perf_counter() - _send_start) * 1000
+            self._record_sr_latency('send' if self._crypto_enabled else 'send_no_crypto', _send_elapsed_ms)
+            self._dbg_send_signed += 1
+        except Exception as e:
+            print(Fore.RED + f'[SIGN] Error signing message: {e}')
+            signed_message = message
+
+        if self._dbg_send_total % 50 == 0:
+            self._dbg_print_stats()
+
+        # TRANSIT-PAYLOAD: this is deliberately NOT a memory snapshot -- it's
+        # the actual bytes that go on the wire. Once signed_message leaves
+        # this point it is opaque, signed (and, one layer further down in
+        # TcpConnection, encrypted) ciphertext; printing it hex-encoded shows
+        # exactly what an on-path attacker would see -- which is genuinely
+        # nothing about the node's internal variables, by design. This is
+        # the real payload, just not a plaintext one.
+        try:
+            _wire_bytes = pickle.dumps(signed_message)
+            _wire_hex = _wire_bytes.hex()
+            _wire_hash = hashlib.sha256(_wire_bytes).hexdigest()[:16]
+            _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
+                _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
+            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
+                  f"{len(_wire_bytes)} bytes, sha256={_wire_hash} | hex={_display_hex}")
+        except Exception as e:
+            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
+                  f"<could not serialize wire payload: {e}>")
+
+        self._connections[node].send(signed_message)
+
+        _print_mem_snapshot('MEM-AFTER-SEND', self._selfNode.address, node.address,
+                             self._syncObj, '->')
+
+        return self._connections[node].state == CONNECTION_STATE.CONNECTED
+
+    def destroy(self):
+        print(Fore.CYAN + '[SIGN] destroy() — final stats:')
+        self._dbg_print_stats()
+        self._sr_latency_monitor.save_file('send_receive_latency')
+        print(Fore.CYAN + f'[SEND/RECV] Saved {len(self._sr_latency_monitor._results_list)} measurements to send_receive_latency.csv')
+        self.setOnMessageReceivedCallback(None)
+        self.setOnNodeConnectedCallback(None)
+        self.setOnNodeDisconnectedCallback(None)
+        self.setOnReadonlyNodeConnectedCallback(None)
+        self.setOnReadonlyNodeDisconnectedCallback(None)
+        for node in self._nodes | self._readonlyNodes:
+            self.dropNode(node)
+        if self._server is not None:
+            self._server.unbind()
+        for conn in list(self._unknownConnections):
+            conn.disconnect()
+        self._unknownConnections = set()
