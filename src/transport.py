@@ -237,7 +237,9 @@ class TCPTransport(Transport):
         print(Fore.YELLOW + f'[NODE-MEMORY] pre-send: node={node_mem} || conn={conn_mem} || msg={message}')
 
     def _dbg_log_pre_receive(self, node, raw_message):
-        """Raw read of node/conn memory right before the incoming bytes get unwrapped/verified."""
+        """Raw read of node/conn memory right before the incoming bytes get unwrapped/verified.
+        The raw bytes themselves are still encrypted ciphertext at this point — unreadable and
+        not useful to log — so only its length is recorded, not the blob."""
         conn = self._connections.get(node)
 
         node_mem = {
@@ -252,8 +254,10 @@ class TCPTransport(Transport):
             'recvRandKey':         getattr(conn, 'recvRandKey', None),
             'encryptor':           getattr(conn, 'encryptor', None),
         }
+        raw_len = len(raw_message) if isinstance(raw_message, (bytes, bytearray)) else None
 
-        print(Fore.YELLOW + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} || raw={raw_message}')
+        print(Fore.YELLOW + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} '
+              f'|| raw=<{raw_len} bytes, encrypted/unreadable>')
 
     def _dbg_log_post_receive(self, node, result):
         """Raw read of node/conn memory right after unwrap/verify succeeded, plus whatever
