@@ -232,34 +232,31 @@ class TCPTransport(Transport):
             return out
         return {}
 
+    _CONN_STATE_NAMES = {0: 'DISCONNECTED', 1: 'CONNECTING', 2: 'CONNECTED'}
+
     def _dbg_log_pre_send(self, node, message):
-        """Log the node's in-memory state and the outgoing message/payload right before signing+sending."""
+        """One clean line showing the node's in-memory state right before it gets signed/sent —
+        same style as the [PAYLOAD] pre-sign line, just for node/conn memory instead."""
         conn = self._connections.get(node)
 
-        node_vars = self._dbg_snapshot_obj(node)
-        conn_vars = self._dbg_snapshot_obj(conn)
+        sock  = getattr(conn, '_TcpConnection__socket', None)
+        laddr = getattr(sock, 'laddr', None) if sock else None
+        raddr = getattr(sock, 'raddr', None) if sock else None
 
-        if isinstance(message, dict):
-            msg_type    = message.get('type', 'unknown_dict')
-            msg_preview = {k: v for k, v in message.items()}
-        elif isinstance(message, (bytes, bytearray)):
-            msg_type    = 'bytes'
-            msg_preview = {'len': len(message), 'head': message[:32]}
-        else:
-            msg_type    = type(message).__name__
-            msg_preview = message
+        node_mem = {
+            'id':      getattr(node, 'id', str(node)),
+            'address': getattr(node, 'address', None),
+        }
+        conn_mem = {
+            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
+            'local_addr': laddr,
+            'peer_addr':  raddr,
+            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
+            'encrypted':  getattr(conn, 'encryptor', None) is not None,
+        }
+        msg = message if isinstance(message, dict) else {'raw_len': len(message)} if isinstance(message, (bytes, bytearray)) else message
 
-        print(Fore.MAGENTA + '[PRE-SEND] ──────────────────────────────────────────')
-        print(Fore.MAGENTA + f'  target_node_id   = {getattr(node, "id", node)}')
-        print(Fore.MAGENTA + f'  target_address   = {getattr(node, "address", None)}')
-        print(Fore.MAGENTA + f'  node_vars        = {node_vars}')
-        print(Fore.MAGENTA + f'  conn_state       = {getattr(conn, "state", None)}')
-        print(Fore.MAGENTA + f'  conn_vars        = {conn_vars}')
-        print(Fore.MAGENTA + f'  self_node_addr   = {getattr(self._selfNode, "address", None)}')
-        print(Fore.MAGENTA + f'  crypto_enabled   = {self._crypto_enabled}')
-        print(Fore.MAGENTA + f'  msg_type         = {msg_type}')
-        print(Fore.MAGENTA + f'  msg_payload      = {msg_preview}')
-        print(Fore.MAGENTA + '────────────────────────────────────────────────────────')
+        print(Fore.MAGENTA + f'[NODE-MEMORY] pre-send: node={node_mem} || conn={conn_mem} || msg={msg}')
 
     def _connToNode(self, conn):
         for node in self._connections:
