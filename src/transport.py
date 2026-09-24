@@ -285,6 +285,30 @@ class TCPTransport(Transport):
 
         print(Fore.CYAN + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} || raw={raw_info}')
 
+    def _dbg_log_post_receive(self, node, result):
+        """Node's memory AFTER the payload has been unwrapped/verified — shows what actually
+        changed as a result of receiving it (tick counter, tracked Raft state, etc)."""
+        conn = self._connections.get(node)
+
+        node_mem = {
+            'id':      getattr(node, 'id', str(node)),
+            'address': getattr(node, 'address', None),
+        }
+        conn_mem = {
+            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
+            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
+            'encrypted':  getattr(conn, 'encryptor', None) is not None,
+        }
+        tracked = self._last_append_sent.get(node)
+        stats = {
+            'recv_total':    self._dbg_recv_total,
+            'recv_verified': self._dbg_recv_verified,
+            'recv_dropped':  self._dbg_recv_dropped,
+        }
+
+        print(Fore.GREEN + f'[NODE-MEMORY] post-receive: node={node_mem} || conn={conn_mem} '
+              f'|| tracked_append_sent={tracked} || stats={stats} || decoded={result}')
+
     def _connToNode(self, conn):
         for node in self._connections:
             if self._connections[node] is conn:
@@ -561,6 +585,9 @@ class TCPTransport(Transport):
             return
 
         self._dbg_recv_verified += 1
+
+        # --- new: log node/conn memory AFTER successful unwrap+verify, before handing off ---
+        self._dbg_log_post_receive(node, result)
 
         if isinstance(result, dict) and result.get('type') == 'next_node_idx':
             next_idx = result.get('next_node_idx')
