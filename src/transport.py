@@ -216,6 +216,51 @@ class TCPTransport(Transport):
         print(Fore.CYAN + f'  RECV  total={self._dbg_recv_total}  verified={self._dbg_recv_verified}  dropped={self._dbg_recv_dropped}')
         print(Fore.CYAN + '────────────────────────────────────────────────────────')
 
+    def _dbg_snapshot_obj(self, obj):
+        """Best-effort dump of an object's in-memory attributes, whether it uses __dict__ or __slots__."""
+        if obj is None:
+            return {}
+        if hasattr(obj, '__dict__'):
+            return dict(vars(obj))
+        if hasattr(obj, '__slots__'):
+            out = {}
+            for slot in obj.__slots__:
+                try:
+                    out[slot] = getattr(obj, slot)
+                except AttributeError:
+                    out[slot] = '<unset>'
+            return out
+        return {}
+
+    def _dbg_log_pre_send(self, node, message):
+        """Log the node's in-memory state and the outgoing message/payload right before signing+sending."""
+        conn = self._connections.get(node)
+
+        node_vars = self._dbg_snapshot_obj(node)
+        conn_vars = self._dbg_snapshot_obj(conn)
+
+        if isinstance(message, dict):
+            msg_type    = message.get('type', 'unknown_dict')
+            msg_preview = {k: v for k, v in message.items()}
+        elif isinstance(message, (bytes, bytearray)):
+            msg_type    = 'bytes'
+            msg_preview = {'len': len(message), 'head': message[:32]}
+        else:
+            msg_type    = type(message).__name__
+            msg_preview = message
+
+        print(Fore.MAGENTA + '[PRE-SEND] ──────────────────────────────────────────')
+        print(Fore.MAGENTA + f'  target_node_id   = {getattr(node, "id", node)}')
+        print(Fore.MAGENTA + f'  target_address   = {getattr(node, "address", None)}')
+        print(Fore.MAGENTA + f'  node_vars        = {node_vars}')
+        print(Fore.MAGENTA + f'  conn_state       = {getattr(conn, "state", None)}')
+        print(Fore.MAGENTA + f'  conn_vars        = {conn_vars}')
+        print(Fore.MAGENTA + f'  self_node_addr   = {getattr(self._selfNode, "address", None)}')
+        print(Fore.MAGENTA + f'  crypto_enabled   = {self._crypto_enabled}')
+        print(Fore.MAGENTA + f'  msg_type         = {msg_type}')
+        print(Fore.MAGENTA + f'  msg_payload      = {msg_preview}')
+        print(Fore.MAGENTA + '────────────────────────────────────────────────────────')
+
     def _connToNode(self, conn):
         for node in self._connections:
             if self._connections[node] is conn:
@@ -567,6 +612,9 @@ class TCPTransport(Transport):
             return False
         if self._send_random_sleep_duration:
             time.sleep(random.random() * self._send_random_sleep_duration)
+
+        # --- new: log the node's in-memory state + the outgoing payload before anything else happens ---
+        self._dbg_log_pre_send(node, message)
 
         if isinstance(message, dict) and message.get('type') == 'handshake':
             self._connections[node].send(message)
