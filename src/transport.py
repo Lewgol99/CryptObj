@@ -1,4 +1,3 @@
-
 from .config import FAIL_REASON
 from .dns_resolver import globalDnsResolver
 from .monotonic import monotonic as monotonicTime
@@ -6,7 +5,6 @@ from .node import Node, TCPNode
 from .tcp_connection import TcpConnection, CONNECTION_STATE
 from .tcp_server import TcpServer
 import functools
-import hashlib
 import os
 import pickle
 import struct
@@ -19,55 +17,6 @@ from colorama import Fore
 
 class TransportNotReadyError(Exception):
     """Transport failed to get ready for operation."""
-
-
-# Fields we deliberately never print, even though they live on the SyncObj
-# instance. This is NOT an attempt to hide "agent memory" from the log for
-# debugging purposes -- it exists because these objects (a) hold private key
-# material / live socket & threading handles that must never be serialized
-# into a text log, and (b) are not meaningfully printable (locks, threads,
-# the transport's own self-reference, etc.) and would either crash repr() or
-# blow up the log with megabytes of noise on every single message.
-#
-# If you are using this log to audit what an AnB/Dolev-Yao model claims an
-# agent "knows", remember that inv(sk(Ci)) and the encryptor's private key
-# ARE part of that agent's real knowledge -- they are just intentionally not
-# printed here for operational-security reasons, not because they aren't
-# part of the node's memory.
-_MEM_SNAPSHOT_BLOCKLIST = {
-    '_SyncObj__thread', '_SyncObj__mainThread', '_SyncObj__pipeNotifier',
-    '_SyncObj__transport', '_SyncObj__encryptor', '_SyncObj__serializer',
-    '_SyncObj__onTickCallbacksLock',
-}
-
-
-def _full_memory_snapshot(syncObj):
-    """
-    Returns EVERY instance attribute currently held by this SyncObj node,
-    as a {name: repr(value)} dict, except for _MEM_SNAPSHOT_BLOCKLIST.
-    Unlike getStatus() (which is a curated ~15-field summary), this walks
-    the real __dict__, so it also picks up votedForNodeId, votesCount,
-    raftElectionDeadline, the command queues, etc. -- anything the object
-    actually holds in memory at the moment this is called.
-    """
-    snapshot = {}
-    for name, value in vars(syncObj).items():
-        if name in _MEM_SNAPSHOT_BLOCKLIST:
-            snapshot[name] = '<redacted: not printed, see _MEM_SNAPSHOT_BLOCKLIST>'
-            continue
-        try:
-            text = repr(value)
-        except Exception as e:
-            text = f'<unrepresentable: {e}>'
-        if len(text) > 300:
-            text = text[:300] + f'...<truncated, {len(text)} chars total>'
-        snapshot[name] = text
-    return snapshot
-
-
-def _print_mem_snapshot(tag, selfAddr, peerAddr, syncObj, arrow):
-    print(Fore.YELLOW + f"[{tag}] {selfAddr} {arrow} {peerAddr} | " +
-          repr(_full_memory_snapshot(syncObj)))
 
 class Transport(object):
 
@@ -522,30 +471,12 @@ class TCPTransport(Transport):
     def _onVerifiedMessageReceived(self, node, message):
         self._dbg_recv_total += 1
 
-        node_addr = getattr(node, 'address', None)
-
-        # BEFORE-RECEIVE: `message` at this point is the raw signed/encrypted
-        # bytes straight off the socket -- nothing has been decrypted or
-        # verified yet. This snapshot captures our own memory state at the
-        # instant that raw payload arrives, before we act on it in any way.
-        _print_mem_snapshot('MEM-BEFORE-RECV', self._selfNode.address, node_addr,
-                             self._syncObj, '<-')
-
         if not isinstance(message, bytes):
             print(Fore.RED + f'[VERIFY] Unexpected non-bytes type={type(message).__name__} — dropping!')
             self._dbg_recv_dropped += 1
             return
 
-        # TRANSIT-PAYLOAD (receive side): the raw bytes exactly as they
-        # arrived off the socket, before decrypt/verify. Same idea as the
-        # send-side hook -- this is the real payload, it's just ciphertext.
-        _wire_hash = hashlib.sha256(message).hexdigest()[:16]
-        _wire_hex = message.hex()
-        _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
-            _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
-        print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {node_addr} -> {self._selfNode.address} | "
-              f"{len(message)} bytes, sha256={_wire_hash} | hex={_display_hex}")
-
+        node_addr       = getattr(node, 'address', None)
         peer_public_key = self._peerSigningKeys.get(node_addr)
 
         _recv_start = time.perf_counter()
@@ -578,13 +509,6 @@ class TCPTransport(Transport):
             self._dbg_print_stats()
 
         self._onMessageReceived(node, result)
-
-        # AFTER-RECEIVE: self._onMessageReceived() above dispatches straight
-        # into SyncObj's own handler, which mutates raft state synchronously
-        # (term, log, commit index, votes, etc.) before returning here -- so
-        # this snapshot reflects state *after* the message has been applied.
-        _print_mem_snapshot('MEM-AFTER-RECV', self._selfNode.address, node_addr,
-                             self._syncObj, '<-')
 
     def _onDisconnected(self, conn):
         import time as _time
@@ -650,9 +574,6 @@ class TCPTransport(Transport):
 
         self._dbg_send_total += 1
 
-        _print_mem_snapshot('MEM-BEFORE-SEND', self._selfNode.address, node.address,
-                             self._syncObj, '->')
-
         if isinstance(message, dict) and message.get('type') == 'append_entries':
             entries      = message.get('entries', []) or []
             prevLogIdx   = message.get('prevLogIdx')
@@ -693,30 +614,7 @@ class TCPTransport(Transport):
         if self._dbg_send_total % 50 == 0:
             self._dbg_print_stats()
 
-        # TRANSIT-PAYLOAD: this is deliberately NOT a memory snapshot -- it's
-        # the actual bytes that go on the wire. Once signed_message leaves
-        # this point it is opaque, signed (and, one layer further down in
-        # TcpConnection, encrypted) ciphertext; printing it hex-encoded shows
-        # exactly what an on-path attacker would see -- which is genuinely
-        # nothing about the node's internal variables, by design. This is
-        # the real payload, just not a plaintext one.
-        try:
-            _wire_bytes = pickle.dumps(signed_message)
-            _wire_hex = _wire_bytes.hex()
-            _wire_hash = hashlib.sha256(_wire_bytes).hexdigest()[:16]
-            _display_hex = _wire_hex if len(_wire_hex) <= 2000 else (
-                _wire_hex[:2000] + f'...<truncated, {len(_wire_hex)} hex chars total>')
-            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
-                  f"{len(_wire_bytes)} bytes, sha256={_wire_hash} | hex={_display_hex}")
-        except Exception as e:
-            print(Fore.MAGENTA + f"[TRANSIT-PAYLOAD] {self._selfNode.address} -> {node.address} | "
-                  f"<could not serialize wire payload: {e}>")
-
         self._connections[node].send(signed_message)
-
-        _print_mem_snapshot('MEM-AFTER-SEND', self._selfNode.address, node.address,
-                             self._syncObj, '->')
-
         return self._connections[node].state == CONNECTION_STATE.CONNECTED
 
     def destroy(self):
