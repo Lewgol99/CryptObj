@@ -258,6 +258,33 @@ class TCPTransport(Transport):
 
         print(Fore.MAGENTA + f'[NODE-MEMORY] pre-send: node={node_mem} || conn={conn_mem} || msg={msg}')
 
+    def _dbg_log_pre_receive(self, node, raw_message):
+        """Mirror of _dbg_log_pre_send, but for the receiving side: what THIS node's memory
+        looks like for the sender's connection, right before the raw bytes get unwrapped/verified."""
+        conn = self._connections.get(node)
+
+        sock  = getattr(conn, '_TcpConnection__socket', None)
+        laddr = getattr(sock, 'laddr', None) if sock else None
+        raddr = getattr(sock, 'raddr', None) if sock else None
+
+        node_mem = {
+            'id':      getattr(node, 'id', str(node)),
+            'address': getattr(node, 'address', None),
+        }
+        conn_mem = {
+            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
+            'local_addr': laddr,
+            'peer_addr':  raddr,
+            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
+            'encrypted':  getattr(conn, 'encryptor', None) is not None,
+        }
+        raw_info = {
+            'len':  len(raw_message) if isinstance(raw_message, (bytes, bytearray)) else None,
+            'type': type(raw_message).__name__,
+        }
+
+        print(Fore.CYAN + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} || raw={raw_info}')
+
     def _connToNode(self, conn):
         for node in self._connections:
             if self._connections[node] is conn:
@@ -520,6 +547,9 @@ class TCPTransport(Transport):
 
         node_addr       = getattr(node, 'address', None)
         peer_public_key = self._peerSigningKeys.get(node_addr)
+
+        # --- new: log receiver-side node/conn memory before unwrap+verify happens ---
+        self._dbg_log_pre_receive(node, message)
 
         _recv_start = time.perf_counter()
         result = _unwrap_and_verify(self.signer, peer_public_key, message, verify_enabled=self._crypto_enabled)
