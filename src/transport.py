@@ -216,98 +216,68 @@ class TCPTransport(Transport):
         print(Fore.CYAN + f'  RECV  total={self._dbg_recv_total}  verified={self._dbg_recv_verified}  dropped={self._dbg_recv_dropped}')
         print(Fore.CYAN + '────────────────────────────────────────────────────────')
 
-    def _dbg_snapshot_obj(self, obj):
-        """Best-effort dump of an object's in-memory attributes, whether it uses __dict__ or __slots__."""
-        if obj is None:
-            return {}
-        if hasattr(obj, '__dict__'):
-            return dict(vars(obj))
-        if hasattr(obj, '__slots__'):
-            out = {}
-            for slot in obj.__slots__:
-                try:
-                    out[slot] = getattr(obj, slot)
-                except AttributeError:
-                    out[slot] = '<unset>'
-            return out
-        return {}
-
-    _CONN_STATE_NAMES = {0: 'DISCONNECTED', 1: 'CONNECTING', 2: 'CONNECTED'}
-
     def _dbg_log_pre_send(self, node, message):
-        """One clean line showing the node's in-memory state right before it gets signed/sent —
-        same style as the [PAYLOAD] pre-sign line, just for node/conn memory instead."""
+        """Raw read of node/conn memory right before send() signs+ships the message.
+        No conversions, no renaming, no derived booleans — just the actual attribute values."""
         conn = self._connections.get(node)
 
-        sock  = getattr(conn, '_TcpConnection__socket', None)
-        laddr = getattr(sock, 'laddr', None) if sock else None
-        raddr = getattr(sock, 'raddr', None) if sock else None
-
         node_mem = {
-            'id':      getattr(node, 'id', str(node)),
+            'id':      getattr(node, 'id', None),
             'address': getattr(node, 'address', None),
         }
         conn_mem = {
-            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
-            'local_addr': laddr,
-            'peer_addr':  raddr,
-            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
-            'encrypted':  getattr(conn, 'encryptor', None) is not None,
+            'state':               getattr(conn, 'state', None),
+            '_TcpConnection__socket':       getattr(conn, '_TcpConnection__socket', None),
+            'recvLastTimestamp':   getattr(conn, 'recvLastTimestamp', None),
+            'sendRandKey':         getattr(conn, 'sendRandKey', None),
+            'recvRandKey':         getattr(conn, 'recvRandKey', None),
+            'encryptor':           getattr(conn, 'encryptor', None),
         }
-        msg = message if isinstance(message, dict) else {'raw_len': len(message)} if isinstance(message, (bytes, bytearray)) else message
 
-        print(Fore.MAGENTA + f'[NODE-MEMORY] pre-send: node={node_mem} || conn={conn_mem} || msg={msg}')
+        print(Fore.YELLOW + f'[NODE-MEMORY] pre-send: node={node_mem} || conn={conn_mem} || msg={message}')
 
     def _dbg_log_pre_receive(self, node, raw_message):
-        """Mirror of _dbg_log_pre_send, but for the receiving side: what THIS node's memory
-        looks like for the sender's connection, right before the raw bytes get unwrapped/verified."""
+        """Raw read of node/conn memory right before the incoming bytes get unwrapped/verified."""
         conn = self._connections.get(node)
 
-        sock  = getattr(conn, '_TcpConnection__socket', None)
-        laddr = getattr(sock, 'laddr', None) if sock else None
-        raddr = getattr(sock, 'raddr', None) if sock else None
-
         node_mem = {
-            'id':      getattr(node, 'id', str(node)),
+            'id':      getattr(node, 'id', None),
             'address': getattr(node, 'address', None),
         }
         conn_mem = {
-            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
-            'local_addr': laddr,
-            'peer_addr':  raddr,
-            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
-            'encrypted':  getattr(conn, 'encryptor', None) is not None,
-        }
-        raw_info = {
-            'len':  len(raw_message) if isinstance(raw_message, (bytes, bytearray)) else None,
-            'type': type(raw_message).__name__,
+            'state':               getattr(conn, 'state', None),
+            '_TcpConnection__socket':       getattr(conn, '_TcpConnection__socket', None),
+            'recvLastTimestamp':   getattr(conn, 'recvLastTimestamp', None),
+            'sendRandKey':         getattr(conn, 'sendRandKey', None),
+            'recvRandKey':         getattr(conn, 'recvRandKey', None),
+            'encryptor':           getattr(conn, 'encryptor', None),
         }
 
-        print(Fore.CYAN + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} || raw={raw_info}')
+        print(Fore.YELLOW + f'[NODE-MEMORY] pre-receive: node={node_mem} || conn={conn_mem} || raw={raw_message}')
 
     def _dbg_log_post_receive(self, node, result):
-        """Node's memory AFTER the payload has been unwrapped/verified — shows what actually
-        changed as a result of receiving it (tick counter, tracked Raft state, etc)."""
+        """Raw read of node/conn memory right after unwrap/verify succeeded, plus whatever
+        the transport already tracks for this node (_last_append_sent, debug counters)."""
         conn = self._connections.get(node)
 
         node_mem = {
-            'id':      getattr(node, 'id', str(node)),
+            'id':      getattr(node, 'id', None),
             'address': getattr(node, 'address', None),
         }
         conn_mem = {
-            'state':      self._CONN_STATE_NAMES.get(getattr(conn, 'state', None), getattr(conn, 'state', None)),
-            'last_tick':  getattr(conn, 'recvLastTimestamp', None),
-            'encrypted':  getattr(conn, 'encryptor', None) is not None,
-        }
-        tracked = self._last_append_sent.get(node)
-        stats = {
-            'recv_total':    self._dbg_recv_total,
-            'recv_verified': self._dbg_recv_verified,
-            'recv_dropped':  self._dbg_recv_dropped,
+            'state':               getattr(conn, 'state', None),
+            '_TcpConnection__socket':       getattr(conn, '_TcpConnection__socket', None),
+            'recvLastTimestamp':   getattr(conn, 'recvLastTimestamp', None),
+            'sendRandKey':         getattr(conn, 'sendRandKey', None),
+            'recvRandKey':         getattr(conn, 'recvRandKey', None),
+            'encryptor':           getattr(conn, 'encryptor', None),
         }
 
-        print(Fore.GREEN + f'[NODE-MEMORY] post-receive: node={node_mem} || conn={conn_mem} '
-              f'|| tracked_append_sent={tracked} || stats={stats} || decoded={result}')
+        print(Fore.YELLOW + f'[NODE-MEMORY] post-receive: node={node_mem} || conn={conn_mem} '
+              f'|| _last_append_sent={self._last_append_sent.get(node)} '
+              f'|| _dbg_recv_total={self._dbg_recv_total} _dbg_recv_verified={self._dbg_recv_verified} '
+              f'_dbg_recv_dropped={self._dbg_recv_dropped} '
+              f'|| result={result}')
 
     def _connToNode(self, conn):
         for node in self._connections:
