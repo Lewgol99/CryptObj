@@ -1,113 +1,53 @@
-Protocol: CryptObj AnB
+Protocol: CryptObj_Phase1_v2 AnBx
  
 Types:
-  Agent C1,C2,C3;   # candidates
-  Number Term, Last_log_index, Last_log_term, PrevLogIdx, PrevLogTerm, Commit_index, Command, Entries, Next_node_idx;   # variables - values change every round/entry, matches paper/repo convention
-  Number trueV, falseV;    # boolean-like flag constants (renamed from true/false - those are reserved keywords in ProVerif and block verification)
-  Number RequestId, Log_idx, Log_term;   # apply_command_response fields - opaque correlation id + commit position, no succ/pre relationship. RequestId2 mirrors C2's independent apply_command branch (see Command2 note below)
-  Number Nonce,X;   # fresh and random value generated
-  Number request_vote, response_vote, append_entries, next_node_idx, apply_command, apply_command_response;   # message-type tags, part of signed payload
-  Function [Agent -> PublicKey] pk; # maps each Agent to the Public Key (Public Key used to encrypt messages)
-  Function [Agent -> PublicKey] sk; # used by others verification of the Public Key used by Agent for Authentication
-  Function [Number -> Number] pre,succ; # pre = number before 'n' and succ = number after 'n'
- 
-Equations: # algebraic relationship - applying succ and pre gets back where you started
-succ(pre(X)) = X;
-pre(succ(X)) = X;
+  Agent C1,C2,C3,C4;
+  Certified C1,C2,C3,C4;
+  Number Term, Last_log_index, Last_log_term;
+  Bool trueV, falseV;
+  Number request_vote, response_vote;
+  Function [Agent -> PublicKey] pk;
+  Function [Agent -> PublicKey] sk;
+  String tag1,tag3,tag5;
  
 Knowledge:
-  C1: C1, C2, C3, pk, sk, pre, succ, inv(sk(C1)), inv(pk(C1)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command, apply_command_response;
-  C2: C1, C2, C3, pk, sk, pre, succ, inv(sk(C2)), inv(pk(C2)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command, apply_command_response;
-  C3: C1, C2, C3, pk, sk, pre, succ, inv(sk(C3)), inv(pk(C3)), trueV, falseV, request_vote, response_vote, append_entries, next_node_idx, apply_command, apply_command_response;
+  C1: C1,C2,C3,C4, pk, sk, inv(sk(C1)), inv(pk(C1)), trueV, falseV, request_vote, response_vote, tag1,tag3,tag5;
+  C2: C1,C2,C3,C4, pk, sk, inv(sk(C2)), inv(pk(C2)), trueV, falseV, request_vote, response_vote, tag1,tag3,tag5;
+  C3: C1,C2,C3,C4, pk, sk, inv(sk(C3)), inv(pk(C3)), trueV, falseV, request_vote, response_vote, tag1,tag3,tag5;
+  C4: C1,C2,C3,C4, pk, sk, inv(sk(C4)), inv(pk(C4)), trueV, falseV, request_vote, response_vote, tag1,tag3,tag5
  
 Actions:
-
-# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2:45025,C1:45025,C3:45025) || data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
-C2 -> C1: {{C2, C1, C3, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C2))}pk(C1)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C2:45025,C3:45025) || data={'type': 'response_vote', 'term': 1}
-C1 -> C2: {{C1, C2, C3, response_vote, Term}inv(sk(C1))}pk(C2)
-
-# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2:45025,C1:45025,C3:45025) || data={'type': 'append_entries', 'term': 1, 'commit_index': 1, 'entries': [(b'\x01', 2, 1)], 'prevLogIdx': 1, 'prevLogTerm': 0}
-C2 -> C1: {{C2, C1, C3, append_entries, Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm}inv(sk(C2))}pk(C1)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C2:45025,C3:45025) || data={'type': 'next_node_idx', 'next_node_idx': 3, 'reset': False, 'success': True}
-C1 -> C2: {{C1, C2, C3, next_node_idx, Next_node_idx, falseV, trueV}inv(sk(C1))}pk(C2)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C1:45025,C2:45025) || data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
-C3 -> C1: {{C3, C1, C2, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C3))}pk(C1)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C2:45025,C1:45025) || data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
-C3 -> C2: {{C3, C2, C1, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C3))}pk(C2)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C2:45025,C3:45025) || data={'type': 'request_vote', 'term': 3, 'last_log_index': 2, 'last_log_term': 1}
-C1 -> C2: {{C1, C2, C3, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C1))}pk(C2)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C3:45025,C2:45025) || data={'type': 'request_vote', 'term': 3, 'last_log_index': 2, 'last_log_term': 1}
-C1 -> C3: {{C1, C3, C2, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C1))}pk(C3)
-
-# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2:45025,C1:45025,C3:45025) || data={'type': 'response_vote', 'term': 3}
-C2 -> C1: {{C2, C1, C3, response_vote, Term}inv(sk(C2))}pk(C1)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C1:45025,C2:45025) || data={'type': 'response_vote', 'term': 3}
-C3 -> C1: {{C3, C1, C2, response_vote, Term}inv(sk(C3))}pk(C1)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C2:45025,C3:45025) || data={'type': 'append_entries', 'term': 3, 'commit_index': 2, 'entries': [(b'\x01', 3, 3)], 'prevLogIdx': 2, 'prevLogTerm': 1}
-C1 -> C2: {{C1, C2, C3, append_entries, Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C2)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C3:45025,C2:45025) || data={'type': 'append_entries', 'term': 3, 'commit_index': 2, 'entries': [(b'\x01', 3, 3)], 'prevLogIdx': 2, 'prevLogTerm': 1}
-C1 -> C3: {{C1, C3, C2, append_entries, Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm}inv(sk(C1))}pk(C3)
-
-# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2:45025,C1:45025,C3:45025) || data={'type': 'next_node_idx', 'next_node_idx': 4, 'reset': False, 'success': True}
-C2 -> C1: {{C2, C1, C3, next_node_idx, Next_node_idx, falseV, trueV}inv(sk(C2))}pk(C1)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C1:45025,C2:45025) || data={'type': 'next_node_idx', 'next_node_idx': 2, 'reset': True, 'success': False}
-C3 -> C1: {{C3, C1, C2, next_node_idx, Next_node_idx, trueV, falseV}inv(sk(C3))}pk(C1)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C1:45025,C2:45025) || data={'type': 'next_node_idx', 'next_node_idx': 4, 'reset': False, 'success': True}
-C3 -> C1: {{C3, C1, C2, next_node_idx, Next_node_idx, falseV, trueV}inv(sk(C3))}pk(C1)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C2:45025,C3:45025) || data={'type': 'apply_command_response', 'request_id': 1, 'log_idx': 5, 'log_term': 3}
-C1 -> C2: {{C1, C2, C3, apply_command_response, RequestId, Log_idx, Log_term}inv(sk(C1))}pk(C2)
-
-# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2:45025,C1:45025,C3:45025) || data={'type': 'apply_command', 'command': b'\x00\x80\x02K\x00K\nK\x01\x86q\x00\x86q\x01.', 'request_id': 2}
-C2 -> C1: {{C2, C1, C3, apply_command, Command, RequestId}inv(sk(C2))}pk(C1)
-
-# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1:45025,C3:45025,C2:45025) || data={'type': 'apply_command_response', 'request_id': 1, 'log_idx': 27, 'log_term': 3}
-C1 -> C3: {{C1, C3, C2, apply_command_response, RequestId, Log_idx, Log_term}inv(sk(C1))}pk(C3)
-
-# as166h-node003-C3 | [PAYLOAD] pre-sign structure: identity=(C3:45025,C1:45025,C2:45025) || data={'type': 'apply_command', 'command': b'\x00\x80\x02K\x00K\nK#\x86q\x00\x86q\x01.', 'request_id': 36}
-C3 -> C1: {{C3, C1, C2, apply_command, Command, RequestId}inv(sk(C3))}pk(C1)
-
+ 
+# ----------------------------------------------------------------
+# Phase 1 - Election: C2 candidate, C1, C3 and C4 voters
+# ----------------------------------------------------------------
+ 
+# as166h-node002-C2 | [PAYLOAD] pre-sign structure: identity=(C2,C1,C3) || data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
+C2 -> C1: {{C2,C1,C3,C4, tag1, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C2))}pk(C1)
+ 
+# as166h-node001-C1 | [PAYLOAD] pre-sign structure: identity=(C1,C2,C3) || data={'type': 'response_vote', 'term': 1}
+C1 -> C2: {{C1,C2,C3,C4, tag1, response_vote, Term}inv(sk(C1))}pk(C2)
+ 
+# as166h-node002-C3 | [PAYLOAD] pre-sign structure: identity=(C2,C2,C1) || data={'type': 'request_vote', 'term': 1, 'last_log_index': 1, 'last_log_term': 0}
+C2 -> C3: {{C2,C3,C1,C4, tag3, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C2))}pk(C3)
+ 
+# as166h-node001-C3 | [PAYLOAD] pre-sign structure: identity=(C3,C2,C1) || data={'type': 'response_vote', 'term': 1}
+C3 -> C2: {{C3,C2,C1,C4, tag3, response_vote, Term}inv(sk(C3))}pk(C2)
+ 
+# node002 -> node004 | identity=(C2,C4,C1,C3)
+C2 -> C4: {{C2,C4,C1,C3, tag5, request_vote, Term, Last_log_index, Last_log_term}inv(sk(C2))}pk(C4)
+ 
+# node004 -> node002 | identity=(C4,C2,C1,C3)
+C4 -> C2: {{C4,C2,C1,C3, tag5, response_vote, Term}inv(sk(C4))}pk(C2)
+ 
 Goals:
-# request_vote
-C2 weakly authenticates C1 on Term, Last_log_index, Last_log_term
-C3 weakly authenticates C1 on Term, Last_log_index, Last_log_term        
-
-# response_vote
-C1 weakly authenticates C2 on Term
-C1 weakly authenticates C3 on Term                                     
-
-# append_entries
-C2 weakly authenticates C1 on Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm
-C3 weakly authenticates C1 on Term, Commit_index, Entries, PrevLogIdx, PrevLogTerm
-
-# next_node_idx
-C1 weakly authenticates C2 on Next_node_idx, falseV, trueV
-C1 weakly authenticates C3 on Next_node_idx, falseV, trueV
-
-# apply_command
-C1 weakly authenticates C2 on Command, RequestId
-C1 weakly authenticates C3 on Command, RequestId
-
-# apply_command_response
-C2 weakly authenticates C1 on RequestId, Log_idx, Log_term
-C3 weakly authenticates C1 on RequestId, Log_idx, Log_term
-
-Term secret between C1, C2, C3
-Last_log_index secret between C1, C2, C3
-Last_log_term secret between C1, C2, C3
-PrevLogIdx secret between C1, C2, C3
-PrevLogTerm secret between C1, C2, C3
-  
-  
+ 
+# ---- Authentication ----
+C1 weakly authenticates C2 on Term, Last_log_index, Last_log_term
+C3 weakly authenticates C2 on Term, Last_log_index, Last_log_term
+C4 weakly authenticates C2 on Term, Last_log_index, Last_log_term
+ 
+# ---- Secrecy ----
+Term secret between C1, C2, C3, C4
+Last_log_index secret between C1, C2, C3, C4
+Last_log_term secret between C1, C2, C3, C4
