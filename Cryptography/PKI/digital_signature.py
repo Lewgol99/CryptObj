@@ -12,11 +12,10 @@ from ecc_keys import ECC_Keys
 from ds_latency_monitor import DSLatencyMonitor
 
 # ---------------------------------------------------------------------------
-# TAGS from the AnBx model (C2 = candidate, C1/C3/C4 = voters)
-#   C2 <-> C1 : tag1     C2 <-> C3 : tag3     C2 <-> C4 : tag5
-# Same tag in both directions (request_vote and response_vote).
-# Any other pair gets tag0 (not part of the model).
+# TAGS - straight from the AnBx model (Phase 1 election, C2 = candidate)
+#   C2 <-> C1 : tag1      C2 <-> C3 : tag3      C2 <-> C4 : tag5
 # ---------------------------------------------------------------------------
+
 NODE_ROLES = {
     '10.166.0.10': 'C1',
     '10.166.0.11': 'C2',
@@ -29,10 +28,12 @@ CHANNEL_TAGS = {
     frozenset(('C2', 'C4')): 'tag5',
 }
 
-def channel_tag(addr_a: str, addr_b: str) -> str:
-    role_a = NODE_ROLES.get(addr_a.split(':')[0])
-    role_b = NODE_ROLES.get(addr_b.split(':')[0])
-    return CHANNEL_TAGS.get(frozenset((role_a, role_b)), 'tag0')  # tag0 = not in model
+def vote_tag(msg_type, sender_ip, recipient_ip):
+    if msg_type not in ('request_vote', 'response_vote'):
+        return None
+    role_a = NODE_ROLES.get(sender_ip.split(':')[0])
+    role_b = NODE_ROLES.get(recipient_ip.split(':')[0])
+    return CHANNEL_TAGS.get(frozenset((role_a, role_b)))   # None if not a model channel
 
 class DigitalSignature(Asymmetric_Keys):
     def __init__(self):
@@ -125,21 +126,25 @@ class DigitalSignature(Asymmetric_Keys):
             return None
 
     def sign(self, message: bytes, sender_ip: str, recipient_ip: str, other_ips: list):
-        """Sign a Raft message, prepending sender+recipient IPs and channel tag for replay protection."""
+        """Sign a Raft message, prepending sender+recipient IPs (and the channel tag for election messages)."""
         try:
             self.latency_monitor.start_latency()
             identity_prefix = ','.join([sender_ip, recipient_ip] + other_ips)
-            tag = channel_tag(sender_ip, recipient_ip)  # TAG
-            print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips} TAG={tag}')
 
             try:
                 decoded_payload = pickle.loads(message)
             except Exception:
                 decoded_payload = message  # not a pickled dict (e.g. already bytes)
-            print(Fore.MAGENTA + f'[PAYLOAD] pre-sign structure: '
-                  f'identity=({identity_prefix}) tag={tag} || data={decoded_payload}')
 
-            signed_message = (identity_prefix + ';' + tag + '||').encode() + message
+            msg_type = decoded_payload.get('type') if isinstance(decoded_payload, dict) else None
+            tag = vote_tag(msg_type, sender_ip, recipient_ip)  # None if not a model channel
+            tag_part = f';{tag}' if tag else ''
+
+            print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips}' + (f' TAG={tag}' if tag else ''))
+            print(Fore.MAGENTA + f'[PAYLOAD] pre-sign structure: '
+                  f'identity=({identity_prefix})' + (f' tag={tag}' if tag else '') + f' || data={decoded_payload}')
+
+            signed_message = (identity_prefix + tag_part + '||').encode() + message
             signature = self._do_sign(signed_message)
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
