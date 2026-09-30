@@ -11,6 +11,23 @@ from asymmetric_keys import Asymmetric_Keys
 from ecc_keys import ECC_Keys
 from ds_latency_monitor import DSLatencyMonitor
 
+NODE_ROLES = {
+    '10.166.0.10': 'C1',
+    '10.166.0.11': 'C2',
+    '10.166.0.12': 'C3',
+    '10.166.0.13': 'C4',
+}
+CHANNEL_TAGS = {
+    frozenset(('C2', 'C1')): 'tag1',
+    frozenset(('C2', 'C3')): 'tag3',
+    frozenset(('C2', 'C4')): 'tag5',
+}
+
+def channel_tag(addr_a: str, addr_b: str) -> str:
+    role_a = NODE_ROLES.get(addr_a.split(':')[0])
+    role_b = NODE_ROLES.get(addr_b.split(':')[0])
+    return CHANNEL_TAGS.get(frozenset((role_a, role_b)), 'tag0')  # tag0 = unknown node
+
 class DigitalSignature(Asymmetric_Keys):
     def __init__(self):
         self.latency_monitor = DSLatencyMonitor()
@@ -102,26 +119,21 @@ class DigitalSignature(Asymmetric_Keys):
             return None
 
     def sign(self, message: bytes, sender_ip: str, recipient_ip: str, other_ips: list):
-        """Sign a Raft message, prepending sender+recipient IPs for replay protection."""
+        """Sign a Raft message, prepending sender+recipient IPs and channel tag for replay protection."""
         try:
             self.latency_monitor.start_latency()
             identity_prefix = ','.join([sender_ip, recipient_ip] + other_ips)
-            print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips}')
-
-            # [PAYLOAD] — logs the exact structure being signed, split at the
-            # identity/data boundary, so the model can mirror the true byte
-            # layout: identity block (S,R,O) FIRST, then '||' separator, then
-            # the pickled Raft RPC payload (type, term, last_log_index, ...)
-            # SECOND. This is not interleaved — identities are never mixed
-            # in among the data fields the way earlier model drafts assumed.
+            tag = channel_tag(sender_ip, recipient_ip)  # TAG
+            print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips} TAG={tag}')
+            
             try:
                 decoded_payload = pickle.loads(message)
             except Exception:
                 decoded_payload = message  # not a pickled dict (e.g. already bytes)
             print(Fore.MAGENTA + f'[PAYLOAD] pre-sign structure: '
-                  f'identity=({identity_prefix}) || data={decoded_payload}')
+                  f'identity=({identity_prefix}) tag={tag} || data={decoded_payload}')
 
-            signed_message = (identity_prefix + '||').encode() + message
+            signed_message = (identity_prefix + ';' + tag + '||').encode() + message
             signature = self._do_sign(signed_message)
             self.latency_monitor.stop_latency('sign')
             print(Fore.GREEN + f'Success: Message Signed!')
