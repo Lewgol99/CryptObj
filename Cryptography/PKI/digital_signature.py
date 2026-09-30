@@ -11,6 +11,12 @@ from asymmetric_keys import Asymmetric_Keys
 from ecc_keys import ECC_Keys
 from ds_latency_monitor import DSLatencyMonitor
 
+# ---------------------------------------------------------------------------
+# TAGS from the AnBx model (C2 = candidate, C1/C3/C4 = voters)
+#   C2 <-> C1 : tag1     C2 <-> C3 : tag3     C2 <-> C4 : tag5
+# Same tag in both directions (request_vote and response_vote).
+# Any other pair gets tag0 (not part of the model).
+# ---------------------------------------------------------------------------
 NODE_ROLES = {
     '10.166.0.10': 'C1',
     '10.166.0.11': 'C2',
@@ -26,7 +32,7 @@ CHANNEL_TAGS = {
 def channel_tag(addr_a: str, addr_b: str) -> str:
     role_a = NODE_ROLES.get(addr_a.split(':')[0])
     role_b = NODE_ROLES.get(addr_b.split(':')[0])
-    return CHANNEL_TAGS.get(frozenset((role_a, role_b)), 'tag0')  # tag0 = unknown node
+    return CHANNEL_TAGS.get(frozenset((role_a, role_b)), 'tag0')  # tag0 = not in model
 
 class DigitalSignature(Asymmetric_Keys):
     def __init__(self):
@@ -125,7 +131,7 @@ class DigitalSignature(Asymmetric_Keys):
             identity_prefix = ','.join([sender_ip, recipient_ip] + other_ips)
             tag = channel_tag(sender_ip, recipient_ip)  # TAG
             print(Fore.CYAN + f'[IDENTITY] S={sender_ip} R={recipient_ip} O={other_ips} TAG={tag}')
-            
+
             try:
                 decoded_payload = pickle.loads(message)
             except Exception:
