@@ -90,7 +90,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 [![Google Scholar](https://img.shields.io/badge/Google%20Scholar-4285F4?style=for-the-badge&logo=google-scholar&logoColor=white)](https://scholar.google.com/citations?user=hA6XGAQAAAAJ&hl=en)
 
 ```python
-
+https://doi.org/10.3390/electronics15204747
 ```
 
 ## License
