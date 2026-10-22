@@ -13,7 +13,7 @@ The objectives of the CryptObj protocol are to implement key wrapping by use of 
 
 ![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)
 
-Original PySyncObj:
+PySyncObj:
 
 ```python
  https://github.com/bakwc/PySyncObj
